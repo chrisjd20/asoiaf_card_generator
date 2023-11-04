@@ -35,6 +35,19 @@ FactionColors = {
     "Lannister":"#861b25",
 }
 
+ArmyAttackAndAbilitiesBorderColors = {
+    "Neutral":"Silver",
+    "Night's Watch":"Gold",
+    "Stark":"Gold",
+    "Targaryen":"Gold",
+    "Baratheon":"Silver",
+    "Bolton":"Gold",
+    "Free Folk":"Gold",
+    "Greyjoy":"Gold",
+    "Martell":"Gold",
+    "Lannister":"Silver",
+}
+
 def add_rounded_corners(im, rad):
     circle = Image.new('L', (rad * 2, rad * 2), 0)
     draw = ImageDraw.Draw(circle)
@@ -558,18 +571,6 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
     if faction in FactionColors:
         FactionColor = FactionColors[faction]
     ArmyAttackAndAbilitiesBorderColor = "Gold"
-    ArmyAttackAndAbilitiesBorderColors = {
-        "Neutral":"Silver",
-        "Night's Watch":"Gold",
-        "Stark":"Gold",
-        "Targaryen":"Gold",
-        "Baratheon":"Silver",
-        "Bolton":"Gold",
-        "Free Folk":"Gold",
-        "Greyjoy":"Gold",
-        "Martell":"Gold",
-        "Lannister":"Silver",
-    }
     if faction in ArmyAttackAndAbilitiesBorderColors:
         ArmyAttackAndAbilitiesBorderColor = ArmyAttackAndAbilitiesBorderColors[faction]
     def attackType(atkstring):
