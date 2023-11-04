@@ -265,6 +265,7 @@ def BuildUnitCardFactionBackground(UnitData, units_folder, attachmentsfolder, gr
 
     # Unit Portrait Stuff
     left_bottom_gold_corner = Image.open(f"{units_folder}Corner{faction_text_clean}.webp").convert('RGBA')
+    left_bottom_gold_corner = left_bottom_gold_corner.resize((229, 702))
     right_bottom_gold_corner = left_bottom_gold_corner.copy().transpose(Image.FLIP_LEFT_RIGHT)
     left_gold_corner_top = left_bottom_gold_corner.copy().transpose(Image.FLIP_TOP_BOTTOM)
     right_gold_corner = left_gold_corner_top.copy().transpose(Image.FLIP_LEFT_RIGHT)
@@ -727,7 +728,7 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
         return div.size[1] + dividerOffset + int(dividerYPadding/2)
     if 'Abilities' in UnitData and UnitData['Abilities']:
         backofcardabilities = [x.lower() for x in ['adaptive']] # There is nothing in the data that differentiates a back of card ability so we will have to manually set it here.
-        all_abilities = [x.strip() for x in UnitData['Abilities'].strip().split('/') if x.strip().lower() not in backofcardabilities]
+        all_abilities = [x.strip() for x in UnitData['Abilities'].strip().split('/') if x.strip().lower() not in backofcardabilities and not x.strip().lower().startswith('loyalty:')]
         copy_all_abilities = all_abilities.copy()
         for ability_text in copy_all_abilities:
             try:
