@@ -3,8 +3,9 @@ import csv
 import os
 import tkinter as tk
 import pdb
-from PIL import Image, ImageDraw, ImageFont, ImageTk, ImageFilter
+from PIL import Image, ImageDraw, ImageFont, ImageTk, ImageStat
 import sys
+import re
 
 #pip install pillow
 
@@ -20,6 +21,19 @@ import sys
 #UNDYING
 #WOUND
 #}
+
+FactionColors = {
+    "Martell":"#a96438",
+    "Neutral":"#544334",
+    "Night's Watch":"#212425",
+    "Stark":"#515a62",
+    "Targaryen":"#5e102b",
+    "Baratheon":"#242829",
+    "Bolton":"#855953",
+    "Free Folk":"#2f2922",
+    "Greyjoy":"#02363a",
+    "Lannister":"#861b25",
+}
 
 def add_rounded_corners(im, rad):
     circle = Image.new('L', (rad * 2, rad * 2), 0)
@@ -47,12 +61,9 @@ def load_fonts(fonts_folder):
     for font_file in font_files:
         try:
             font_path = os.path.join(fonts_folder, font_file)
-            fonts[font_file.split(".")[0]+'-50'] = ImageFont.truetype(font_path, size=50)
             fonts[font_file.split(".")[0]] = ImageFont.truetype(font_path, size=44)
-            fonts[font_file.split(".")[0]+'-40'] = ImageFont.truetype(font_path, size=40)
-            fonts[font_file.split(".")[0]+'-35'] = ImageFont.truetype(font_path, size=35)
-            fonts[font_file.split(".")[0]+'-30'] = ImageFont.truetype(font_path, size=30)
-            fonts[font_file.split(".")[0]+'-25'] = ImageFont.truetype(font_path, size=25)
+            for i in range(2,61):
+                fonts[font_file.split(".")[0]+f'-{i}'] = ImageFont.truetype(font_path, size=i)
             print(f"Successfully loaded font: {font_file}")
         except Exception as e:
             print(f"Failed to load font {font_file}: {str(e)}")
@@ -177,21 +188,70 @@ class LayeredImageCanvas:
             canvas.paste(layer['image'], (layer['x'], layer['y']), layer['image'])
         return canvas
 
-def BuildUnitCardFactionBackground(UnitData, units_folder, graphics_folder):
-    faction = UnitData['Faction'].replace(' ','') # faction file names dont include spaces
+def make_bottom_transparent(image, rows):
+    # Check if the image has an alpha channel, if not, add one
+    if image.mode != 'RGBA':
+        image = image.convert('RGBA')
+    # Load the alpha channel (mask) of the image
+    alpha = image.split()[3]
+    # Create a new alpha channel with the same size as the original image, fully opaque
+    new_alpha = Image.new('L', image.size, 255)
+    # Process the bottom 20 rows
+    for y in range(image.height - rows, image.height):
+        for x in range(image.size[0]):
+            new_alpha.putpixel((x, y), 0)
+    # Put the new alpha channel back into the image
+    image.putalpha(new_alpha)
+    return image
+
+def crop_transparent_edges(image):
+    # Ensure image has an alpha channel
+    if image.mode != 'RGBA':
+        image = image.convert('RGBA')
+    # Get the alpha channel of the image
+    alpha = image.split()[-1]
+    # Get the bounding box of the non-zero regions in the alpha channel
+    bbox = alpha.getbbox()
+    # If the image is completely transparent, return the original image
+    if bbox is None:
+        return image
+    # Crop the image with the bounding box
+    cropped_image = image.crop(bbox)
+    return cropped_image
+
+def add_background_to_image(original_image, faction):
+    faction_color = False
+    if faction in FactionColors:
+        faction_color = FactionColors[faction]
+    # Set default background color to transparent if faction_color is None or False
+    background_color = (0, 0, 0, 0) if not faction_color else faction_color
+    # Create a new image with the same size as the original and the specified background color
+    new_image = Image.new("RGBA", original_image.size, background_color)
+    # Since the original image may have transparency, we use it as the mask for itself
+    new_image.paste(original_image, (0, 0), original_image)
+    return new_image
+
+def BuildUnitCardFactionBackground(UnitData, units_folder, attachmentsfolder, graphics_folder):
+    faction = UnitData['Faction'] # faction file names dont include spaces
+    faction_text_clean = re.sub(r'[^A-Za-z]', '', faction)
     UnitType = UnitData['Type'].replace(' ','')
     # Images points of origin are always top-left most corner of the loaded image.
-    unit_faction_bg_image = Image.open(f"{units_folder}UnitBg{faction}.jpg").convert('RGBA')
-    
+    unit_faction_bg_image = Image.open(f"{units_folder}UnitBg{faction_text_clean}.jpg").convert('RGBA')
     shadow_size = 4
     shadow_strength = 125
 
     # Left most bar
-    top_left_red_gold_bar = Image.open(f"{units_folder}Bar{faction}.webp").convert('RGBA')
-    large_bar = Image.open(f"{units_folder}LargeBar{faction}.webp").convert('RGBA')
-    next_red_gold_bar_below = Image.open(f"{units_folder}Bar{faction}.webp").convert('RGBA')
+    top_left_red_gold_bar = crop_transparent_edges(Image.open(f"{attachmentsfolder}Bar{faction_text_clean}.webp").convert('RGBA'))
+    large_bar = crop_transparent_edges(Image.open(f"{units_folder}LargeBar{faction_text_clean}.webp").convert('RGBA'))
+    top_left_red_gold_bar = top_left_red_gold_bar.resize((1063, 16))
+    large_bar = large_bar.resize((954, 85))
+    #top_left_red_gold_bar  = add_background_to_image(top_left_red_gold_bar, faction)
+    large_bar = add_background_to_image(large_bar, faction)
+    #print(top_left_red_gold_bar.size, large_bar.size)
+    # (1063, 16) (954, 85)
+    next_red_gold_bar_below = top_left_red_gold_bar.copy()
 
-    # Shield and morale stuff
+    # Shield and Morale stuff
     shield_top_gold_bar = next_red_gold_bar_below.copy()
     shield_large_bar = large_bar.copy()
     shield_next_gold_bar = next_red_gold_bar_below.copy()
@@ -204,13 +264,17 @@ def BuildUnitCardFactionBackground(UnitData, units_folder, graphics_folder):
     #Unit Type on bottom of the left side portrait gold bar
 
     # Unit Portrait Stuff
-    left_bottom_gold_corner = Image.open(f"{units_folder}Corner{faction}.webp").convert('RGBA')
+    left_bottom_gold_corner = Image.open(f"{units_folder}Corner{faction_text_clean}.webp").convert('RGBA')
     right_bottom_gold_corner = left_bottom_gold_corner.copy().transpose(Image.FLIP_LEFT_RIGHT)
     left_gold_corner_top = left_bottom_gold_corner.copy().transpose(Image.FLIP_TOP_BOTTOM)
     right_gold_corner = left_gold_corner_top.copy().transpose(Image.FLIP_LEFT_RIGHT)
-    unit_portrait = Image.open(f"{units_folder}{UnitData['Id']}.jpg").convert('RGBA')
-    portrait_attachment_on_middleof_trim = Image.open(f"{graphics_folder}/attachment{faction}.png").convert('RGBA')
-    faction_crest = Image.open(f"{units_folder}Crest{faction}.webp").convert('RGBA')
+    unit_portrait = crop_transparent_edges(Image.open(f"{units_folder}{UnitData['Id']}.jpg").convert('RGBA'))
+    #unit_portrait = unit_portrait.resize((460, 707)) # There was some slight variation in the portrait size but this was the consistent size
+    unit_portrait = unit_portrait.resize((468, 719))
+    # Need to transparent the bottom part of the portrait so it doesnt go outside of bounds but keeps the same dimensions
+    unit_portrait = make_bottom_transparent(unit_portrait, 64)
+    portrait_attachment_on_middleof_trim = Image.open(f"{graphics_folder}/attachment{faction_text_clean}.png").convert('RGBA')
+    faction_crest = Image.open(f"{units_folder}Crest{faction_text_clean}.webp").convert('RGBA')
 
     # Tan Skills Background:
     skills_tan_background_for_text = Image.open(f"{units_folder}SkillsBg.webp").convert('RGBA')
@@ -279,8 +343,9 @@ def BuildUnitCardFactionBackground(UnitData, units_folder, graphics_folder):
     xOffset -= left_onleft_vertical_gold_bar.size[0] - (shadow_size*2)
     canvas.add_layer(left_onleft_vertical_gold_bar, xOffset, yOffset, depth=2)
     xOffset += large_onleft_vertical_gold_bar.size[0] + left_onleft_vertical_gold_bar.size[0]
-    yOffset -= int(large_onleft_vertical_gold_bar.size[0]/1.75)
-    canvas.add_layer(unit_portrait, xOffset-shadow_size, yOffset, depth=0)
+    num = int(large_onleft_vertical_gold_bar.size[0]/1.5)
+    yOffset -= num
+    canvas.add_layer(unit_portrait, xOffset-shadow_size - 4, yOffset + num, depth=0)
     xOffset -= (shadow_size*4)
     canvas.add_layer(right_onleft_vertical_gold_bar, xOffset, 0, depth=2)
 
@@ -300,6 +365,7 @@ def BuildUnitCardFactionBackground(UnitData, units_folder, graphics_folder):
     faction_crest = faction_crest.rotate(-8)
     scaled_faction_crest = faction_crest.resize((width, height))
     canvas.add_layer(scaled_faction_crest, 610, 506, depth=3)
+    #UnitData['Name']
 
     # Gold bars to the right of the portrait:
     left_onright_vertical_gold_bar = add_shadow(left_onright_vertical_gold_bar, shadow_size, shadow_strength, sides=('left', 'right'))
@@ -314,17 +380,17 @@ def BuildUnitCardFactionBackground(UnitData, units_folder, graphics_folder):
     movement_foot_image = Image.open(f"{units_folder}Movement.webp").convert('RGBA')
     movement_foot_stat_bg_image = Image.open(f"{units_folder}StatBg.webp").convert('RGBA')
 
-    # Shield and morale stuff
+    # Shield and Morale stuff
     shield_top_gold_bar = next_red_gold_bar_below.copy()
     shield_large_bar = large_bar.copy()
     shield_next_gold_bar = next_red_gold_bar_below.copy()
     shield_image = Image.open(f"{units_folder}Defense.webp").convert('RGBA')
     shield_stat_bg_image = movement_foot_stat_bg_image.copy()
-    morale_image = Image.open(f"{units_folder}Morale.webp").convert('RGBA')
-    morale_stat_bg_image = movement_foot_stat_bg_image.copy()
+    Morale_image = Image.open(f"{units_folder}Morale.webp").convert('RGBA')
+    Morale_stat_bg_image = movement_foot_stat_bg_image.copy()
 
     # unit type
-    unit_type_image = Image.open(f"{units_folder}UnitType.{UnitType}{faction}.webp").convert('RGBA')
+    unit_type_image = Image.open(f"{units_folder}UnitType.{UnitType}{faction_text_clean}.webp").convert('RGBA')
 
     canvas.add_layer(movement_foot_image, 56, 48, depth=4)
     canvas.add_layer(movement_foot_stat_bg_image, 156, 66, depth=3)
@@ -332,8 +398,8 @@ def BuildUnitCardFactionBackground(UnitData, units_folder, graphics_folder):
     canvas.add_layer(shield_image, 56, 595, depth=4)
     canvas.add_layer(shield_stat_bg_image, 156, 613, depth=3)
     xmore = 100
-    canvas.add_layer(morale_image, 156+xmore, 595, depth=4)
-    canvas.add_layer(morale_stat_bg_image, 256+xmore, 613, depth=3)
+    canvas.add_layer(Morale_image, 156+xmore, 595, depth=4)
+    canvas.add_layer(Morale_stat_bg_image, 256+xmore, 613, depth=3)
     canvas.add_layer(unit_type_image, 196, 665, depth=2)
     return canvas.render()
 
@@ -342,7 +408,7 @@ def split_name_string(s):
     if ',' in s:
         return s.split(','), True
     # Split the string if it's longer than 18 characters
-    if len(s) > 18:
+    if len(s) > 15:
         # Find the middle index of the string
         middle_idx = len(s) // 2
         # Search for the nearest space character to the middle
@@ -365,23 +431,19 @@ def split_on_center_space(text):
     # If the length of the text is less than 10 or there's no space, return the text in a single-item list
     if len(text) < 10 or ' ' not in text:
         return [text]
-
     # Find the middle index of the string
     middle = len(text) // 2
     left_index = text.rfind(' ', 0, middle)  # Search for space going left from the middle
     right_index = text.find(' ', middle)     # Search for space going right from the middle
-
     # Determine the closest space to the middle to use as the split point
     # If no space to the left, use the right one; if both exist, choose the closest
     if left_index == -1 or (right_index != -1 and (middle - left_index) > (right_index - middle)):
         split_index = right_index
     else:
         split_index = left_index
-
     # Split the string into two parts
     part1 = text[:split_index]
     part2 = text[split_index+1:]  # +1 to exclude the space itself
-
     # Return the parts in a list
     return [part1, part2]
 
@@ -396,82 +458,92 @@ def draw_icon(image, icon, x_current, y_current, max_height):
     aspect_ratio = icon.width / icon.height
     scaled_height = max_height
     scaled_width = int(aspect_ratio * scaled_height)
-
     # Resize the icon using LANCZOS resampling
     icon = icon.resize((scaled_width, scaled_height), Image.Resampling.LANCZOS)
-
+    # Calculate the mean color of the icon
+    stat = ImageStat.Stat(icon)
+    mean_color = stat.mean[:3]  # Get the mean of the R, G, B channels
+    # Determine if the color is close to white
+    if all(x > 100 for x in mean_color):  # You can adjust the threshold value
+        # Create a black image of the same size
+        black_icon = Image.new('RGB', icon.size, color='black')
+        # Use the alpha channel of the original icon to apply it to the black image
+        black_icon.putalpha(icon.getchannel('A'))
+        icon = black_icon
     # Get the coordinates for the icon's top-left corner
     icon_top_left = (x_current, y_current - (scaled_height // 2))  # Center vertically with the text
-
     # Paste the icon onto the image, using the alpha channel of the icon as the mask
     image.paste(icon, icon_top_left, mask=icon)
-
     # Return the new x position, which is to the right of the icon we just drew
     return x_current + scaled_width
 
-def draw_markdown_text(image, bold_font, bold_font2, regular_font, title, text_body, color, y_top, x_left, x_right, graphics_folder, padding=2):
+def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_italic, title, text_body, color, y_top, x_left, x_right, graphics_folder, padding=2):
     # Initialize the drawing context
     draw = ImageDraw.Draw(image)
+    
     # Draw the title using the bold font
     draw.text((x_left, y_top), title.strip(), font=bold_font, fill=color)
-    title_height = bold_font.getmask(title.strip()).getbbox()[3]  # Bottom of the title bbox
-    # Update the y-coordinate for the text body
+    
+    # Get title height and update y-coordinate for text body
+    title_bbox = draw.textbbox((x_left, y_top), title.strip(), font=bold_font)
+    title_height = title_bbox[3] - title_bbox[1]
     y_current = y_top + title_height + int(padding * 2)
-    # Define the radius of the bullet point
-    bullet_radius = 3  # Radius of the bullet point circle
-    # Get the height of the regular font which we will use as a line height
-    max_height = regular_font.getmask('Hy').getbbox()[3]  # Use 'Hy' to account for descenders and ascenders
+    
+    # Define line height using the regular font
+    max_height = draw.textbbox((0, 0), 'Hy', font=regular_font)[3]  # 'Hy' for descenders and ascenders
+
     # Split the text body by lines
     lines = [x.strip() for x in text_body.split('\n')]
-    for line in lines:
-        # Check for bullet points at the start of the line
-        if line.startswith('•'):
-            # Draw the bullet circle and adjust x_current
-            bullet_center = (x_left + bullet_radius, (y_current + bullet_radius + max_height / 2)-5)
-            draw_circle(draw, bullet_center, bullet_radius, fill="black")
-            x_current = x_left + bullet_radius * 2 + padding
-            line = line[1:].lstrip()  # Remove the bullet point and any leading whitespace
-        else:
+
+    # Function to handle the drawing of text parts with the appropriate style
+    def draw_text_part(draw, x_current, y_current, word, font, fill):
+        word += ' '  # Add space after each word for separation
+        bbox = draw.textbbox((x_current, y_current), word, font=font)
+        width = bbox[2] - bbox[0]
+        if x_current + width > x_right:
+            # If the word exceeds the line, move to the next line
             x_current = x_left
-        # Check for markdown bold syntax and split if necessary
-        parts = line.split('**')
-        for i, part in enumerate(parts):
-            if i % 2 == 1:
+            y_current += max_height + padding
+        draw.text((x_current, y_current), word, font=font, fill=fill)
+        return x_current + width, y_current
+
+    for line in lines:
+        # Initialize x-coordinate for line
+        x_current = x_left
+
+        # Check for markdown bold and italic syntax
+        bold_parts = line.split('**')
+        for b, bold_part in enumerate(bold_parts):
+            if b % 2 == 1:
                 # This part is bold
                 font = bold_font2
             else:
-                # This part is regular
-                font = regular_font
-            # Break the part into words to check for word wrapping
-            words = part.split(' ')
-            for word in words:
-                if '[' in word and ']' in word:
-                    # Replace the [STRING] with an icon
-                    icon_key = word.split('[')[1].split(']')[0]
-                    word = word.split('[')[0]
-                    word_bbox = draw.textbbox((x_current, y_current), word, font=font)
-                    word_width = word_bbox[2] - word_bbox[0]
-                    if x_current + word_width > x_right:
-                        # If the word exceeds the line, move to the next line
-                        x_current = x_left
-                        y_current += max_height + padding
-                    # Draw the word
-                    draw.text((x_current, y_current), word, font=font, fill="black")
-                    x_current += word_width
-                    icon = Image.open(f"{graphics_folder}/{icon_key}.png").convert('RGBA')
-                    if icon:
-                        x_current = draw_icon(image, icon, x_current, y_current+14, max_height+ 18)
+                font = regular_font  # Reset to regular font for non-bold parts
+
+            # Split the part into italic parts and draw each one
+            italic_parts = bold_part.split('*')
+            for i, italic_part in enumerate(italic_parts):
+                if i % 2 == 1:
+                    # This part is italic
+                    font = regular_font_italic
+                else:
+                    font = bold_font2 if b % 2 == 1 else regular_font
+
+                words = italic_part.split(' ')
+                for word in words:
+                    if '[' in word and ']' in word:
+                        # Handle icons in text
+                        icon_key = word.split('[')[1].split(']')[0]
+                        word = word.split('[')[0]
+                        # Draw the word before the icon
+                        x_current, y_current = draw_text_part(draw, x_current, y_current, word, font, "black")
+                        # Load and draw the icon
+                        icon = Image.open(f"{graphics_folder}/{icon_key}.png").convert('RGBA')
+                        if icon:
+                            x_current = draw_icon(image, icon, x_current, y_current+14, max_height+18)
                         continue  # Skip the rest of the loop and don't draw this word as text
-                word += ' '  # Add space after each word for separation
-                word_bbox = draw.textbbox((x_current, y_current), word, font=font)
-                word_width = word_bbox[2] - word_bbox[0]
-                if x_current + word_width > x_right:
-                    # If the word exceeds the line, move to the next line
-                    x_current = x_left
-                    y_current += max_height + padding
-                # Draw the word
-                draw.text((x_current, y_current), word, font=font, fill="black")
-                x_current += word_width
+                    # Draw the word
+                    x_current, y_current = draw_text_part(draw, x_current, y_current, word, font, "black")
         # After a line is processed, move to the next line
         y_current += max_height + padding
     return image, y_current
@@ -480,19 +552,8 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
     canvas = LayeredImageCanvas(unit_card.size[0], unit_card.size[1])
     canvas.add_layer(unit_card, 0, 0, depth=0)
     faction = UnitData['Faction']
+    faction_text_clean = re.sub(r'[^A-Za-z]', '', faction)
     FactionColor = "#7FDBFF" # AQUA default in case new army or somethign
-    FactionColors = {
-        "Martell":"#9e4c00",
-        "Neutral":"#3e2a19",
-        "Night's Watch":"#302a28",
-        "Stark":"#447386",
-        "Targaryen":"#530818",
-        "Baratheon":"#f3c631",
-        "Bolton":"#7a312b",
-        "Free Folk":"#8da884",
-        "Greyjoy":"#10363b",
-        "Lannister":"#b30300",
-    }
     if faction in FactionColors:
         FactionColor = FactionColors[faction]
     ArmyAttackAndAbilitiesBorderColor = "Gold"
@@ -579,91 +640,158 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
         atk_ranks = UnitData['12'].split('.')
         MakeAttackBar(atk2, atk_ranks, tohit, xoffset=xoffset, yoffset=yoffset)
     # AsoiafData
-    SkillBottom = Image.open(f"{units_folder}SkillBottom{faction}.webp").convert('RGBA')
+    SkillBottom = Image.open(f"{units_folder}SkillBottom{faction_text_clean}.webp").convert('RGBA')
     SkillTop = SkillBottom.copy().transpose(Image.FLIP_TOP_BOTTOM)
-    SkillDivider = Image.open(f"{units_folder}Divider{faction}.webp").convert('RGBA')
-    yAbilityOffset = 35
-    dividerOffset = 15
+    SkillDivider = Image.open(f"{units_folder}Divider{faction_text_clean}.webp").convert('RGBA')
+    yAbilityOffset = 45
+    dividerOffset = 20
     SkillBarsOffset = 860
     canvas.add_layer( SkillTop , SkillBarsOffset-5, yAbilityOffset - SkillTop.size[1], depth=3)
     unit_card = canvas.render()
     yAbilityOffset += dividerOffset
+    def MakeAttackIcon(atktype):
+        # Load the images
+        AtkTypeBg = Image.open(f"{units_folder}AttackTypeBg{ArmyAttackAndAbilitiesBorderColor}.webp").convert('RGBA')
+        AtkTypeIcon = Image.open(f"{units_folder}AttackType.{atktype}{ArmyAttackAndAbilitiesBorderColor}.webp").convert('RGBA')
+        # Resize border to be slightly larger than its original size
+        border_scaling_factor = 1.1  # 10% larger than the original size
+        new_border_width, new_border_height = [int(x * border_scaling_factor) for x in AtkTypeIcon.size]
+        AtkTypeIcon = AtkTypeIcon.resize((new_border_width, new_border_height), resample=Image.LANCZOS)
+        # Create a new image with the same size as the resized border
+        new_image = Image.new('RGBA', (new_border_width, new_border_height), (255, 255, 255, 0))
+        # Calculate the position to paste the sword image so it is centered left and right
+        sword_width, sword_height = AtkTypeBg.size
+        x_position = (new_image.width - sword_width) // 2
+        y_position = (new_image.height - sword_height) // 2
+        # Paste the sword image onto the new image
+        new_image.paste(AtkTypeBg, (x_position, y_position), AtkTypeBg)
+        # Paste the resized border image onto the new image with sword
+        new_image.paste(AtkTypeIcon, (0, 0), AtkTypeIcon)
+        #width, height = [int(x*1.1) for x in new_image.size]
+        #new_image = new_image.resize((width, height))
+        return new_image
+    def CheckImagePath(imgtype):
+        imagepath = f"{units_folder}Skill{imgtype}{ArmyAttackAndAbilitiesBorderColor}.webp"
+        if not os.path.exists(imagepath):
+            if ArmyAttackAndAbilitiesBorderColor == "Gold":
+                imagepath = f"{units_folder}Skill{imgtype}Silver.webp"
+            else:
+                imagepath = f"{units_folder}Skill{imgtype}Gold.webp"
+        return imagepath
+    SkillsAndAbiitiesIconsTable = {
+        "F": Image.open(CheckImagePath("Faith")).convert('RGBA'),
+        "Fire": Image.open(CheckImagePath("Fire")).convert('RGBA'),
+        "M":MakeAttackIcon("Melee"),
+        "Morale":Image.open(f"{graphics_folder}/IconMorale.png").convert('RGBA'),
+        "P":Image.open(CheckImagePath("Pillage")).convert('RGBA'),
+        "R":MakeAttackIcon("Ranged"),
+        "V":Image.open(CheckImagePath("Venom")).convert('RGBA'),
+        "W":Image.open(CheckImagePath("Wounds")).convert('RGBA'),
+    }
+
+    def create_combined_vertical_image(skill_icon_image, skill_stat_image, font, text):
+        # Calculate the width and height needed for the new image
+        width = max(skill_icon_image.width, skill_stat_image.width)
+        height = skill_icon_image.height + skill_stat_image.height - 20  # Overlap by 20px
+        # Create a new image with the calculated width and height
+        combined_image = Image.new('RGBA', (width, height), (0, 0, 0, 0))  # Transparent background
+        # Calculate X-axis and Y-axis centering for the text on the stat image
+        draw = ImageDraw.Draw(skill_stat_image)
+        text_width, text_height = draw.textsize(text, font=font)
+        text_x = (skill_stat_image.width - text_width) // 2
+        text_y = (skill_stat_image.height - text_height) // 2
+        # Draw the text onto the stat image
+        draw.text((text_x, text_y), text, font=font, fill="white")
+        # Calculate X-axis centering for the Morale image
+        Morale_x_center = (width - skill_icon_image.width) // 2
+        # Paste the Morale image onto the combined image, centered
+        combined_image.paste(skill_icon_image, (Morale_x_center, 0), skill_icon_image)
+        # Calculate X-axis centering for the stat image
+        stat_x_center = (width - skill_stat_image.width) // 2
+        # Calculate the Y-axis position for the stat image (right below the Morale image -20px)
+        stat_y_position = skill_icon_image.height - 20
+        # Paste the stat image onto the combined image, centered and below the Morale image
+        combined_image.paste(skill_stat_image, (stat_x_center, stat_y_position), skill_stat_image)
+        return combined_image
+
+    def split_string_by_trailing_digits(s):
+        match = re.search(r'^(.*?)(\d+)$', s)
+        if match:
+            return True, match.group(1), match.group(2)
+        else:
+            return False, s, ''
+    dividerYPadding = 10
+    def addDivider(x, y):
+        div = SkillDivider.copy()
+        unit_card.paste(div, (x, y+dividerYPadding), div)
+        return div.size[1] + dividerOffset + int(dividerYPadding/2)
     if 'Abilities' in UnitData and UnitData['Abilities']:
-        all_abilities = [x.strip() for x in UnitData['Abilities'].split('/')]
+        backofcardabilities = [x.lower() for x in ['adaptive']] # There is nothing in the data that differentiates a back of card ability so we will have to manually set it here.
+        all_abilities = [x.strip() for x in UnitData['Abilities'].strip().split('/') if x.strip().lower() not in backofcardabilities]
+        copy_all_abilities = all_abilities.copy()
+        for ability_text in copy_all_abilities:
+            try:
+                [x for x in AsoiafData['newskills'] if x['Name'].lower() == ability_text.lower()][0]
+            except IndexError as e:
+                all_abilities.remove(ability_text)
+                continue
         for index in range(len(all_abilities)):
             ability = all_abilities[index]
-            SkillType = "Order"
-            #if not ability.startswith(f"{SkillType}:"):
-            # {'Name': 'Order: Hidden Traps', 'Description': '**When an unengaged enemy in Long Range performs any Action, before resolving that Action:**\nChoose 1:\n• That enemy suffers 1 Hit, +1 Hit for each of its remaining ranks.\n• That Enemy suffers -1[MOVEMENT] until the end of the Turn.', 'Icons': '', 'Version': '2021-S01'}
-            skilldata = [x for x in AsoiafData['newskills'] if x['Name'] == ability][0]
-            GBFont = AsoiafFonts.get('Tuff-Bold-35',ImageFont.load_default())
-            TN = AsoiafFonts.get('Tuff-Bold-35',ImageFont.load_default())
-            TN30 = AsoiafFonts.get('Tuff-Normal-30',ImageFont.load_default())
+            skillability_icon_images = []
+            try:
+                skilldata = [x for x in AsoiafData['newskills'] if x['Name'].strip().lower() == ability.lower()][0]
+            except Exception as e:
+                print("Ran into an error at:\nskilldata = [x for x in AsoiafData['newskills'] if x['Name'].lower() == ability.lower()][0]")
+                print(str(e))
+                sys.exit(1)
+                #pdb.set_trace()
+            if ability.startswith(f"Order:"):
+                skillability_icon_images.append( [Image.open(f"{units_folder}SkillOrder{ArmyAttackAndAbilitiesBorderColor}.webp").convert('RGBA'),[0,0]] )
+            elif 'Icons' in skilldata and skilldata['Icons']:
+                split_skills = skilldata['Icons'].split(',')
+                for skill in split_skills:
+                    # Some units have a Morale5 ability which is unique so we have to handle that (but I made it so it can handle other situations too just in case)
+                    ended_with_digits, text, digits = split_string_by_trailing_digits(skill)
+                    if ended_with_digits:
+                        skill_icon_image = Image.open(f"{units_folder}{text}.webp").convert('RGBA')
+                        skill_stat_image = Image.open(f"{units_folder}StatBg.webp").convert('RGBA')
+                        skillability_icon_images.append( [create_combined_vertical_image(skill_icon_image, skill_stat_image, AsoiafFonts.get('Garamond-Bold'), f"{digits}+"),[0,-5]] )
+                    elif skill in SkillsAndAbiitiesIconsTable:
+                        off = [0,-10]
+                        if skill in ['M','R']: # if melee or ranged
+                            off = [10,-5]
+                        skillability_icon_images.append( [SkillsAndAbiitiesIconsTable[skill].copy(),off] )
+            GBFont = AsoiafFonts.get('Tuff-Bold-33',ImageFont.load_default())
+            TN = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
+            TN30 = AsoiafFonts.get('Tuff-Normal-28',ImageFont.load_default())
+            TN30I = AsoiafFonts.get('Tuff-Italic-28',ImageFont.load_default())
             starty = yAbilityOffset+0
-            unit_card, yAbilityOffset = draw_markdown_text(unit_card, GBFont, TN, TN30, ability.upper(), skilldata['Description'], FactionColor, yAbilityOffset, 885, 1400, graphics_folder, padding=10)
+            unit_card, yAbilityOffset = draw_markdown_text(unit_card, GBFont, TN, TN30, TN30I, ability.upper().split('(')[0].strip(), skilldata['Description'].strip(), FactionColor, yAbilityOffset, 885, 1400, graphics_folder, padding=10)
             midy = starty + int((yAbilityOffset-starty) / 2 )
-            if 'Icons' in skilldata and skilldata['Icons']:
-                pass
-                #unit_card.paste(SkillBottom, (SkillBarsOffset, midy), SkillBottom)
-                #unit_card.paste(SkillBottom, (SkillBarsOffset, midy), SkillBottom)
-                #└─$ ls -lah ./assets/graphics/Icon* | awk '{print $9}'
-                #./assets/graphics/IconCard.png
-                #./assets/graphics/IconCheck.png
-                #./assets/graphics/IconCrown.png
-                #./assets/graphics/IconDefense.png
-                #./assets/graphics/IconEdit.png
-                #./assets/graphics/IconExclamation.png
-                #./assets/graphics/IconEye.png
-                #./assets/graphics/IconFaith.png
-                #./assets/graphics/IconFire.png
-                #./assets/graphics/IconMelee.png
-                #./assets/graphics/IconMorale.png
-                #./assets/graphics/IconMovement.png
-                #./assets/graphics/IconOrder.png
-                #./assets/graphics/IconPen.png
-                #./assets/graphics/IconPillage.png
-                #./assets/graphics/IconQuestion.png
-                #./assets/graphics/IconRanged.png
-                #./assets/graphics/IconShare.png
-                #./assets/graphics/IconVenom.png
-                #./assets/graphics/IconWound.png
-                #"F" Faith
-                #"Fire" Fire 
-                #"M" Melee
-                #"Morale5" Moral and a stat bar with 5+ in it
-                #"M,R" Melee, Ranges
-                #"M,V" Melee, Venom
-                #"M,W" Melee, Wound
-                #null # No icon
-                #"P" # Pillage
-                #"R"    # Ranged
-                #"R,M" Range, Melee
-                #"R,W" Ranged, Wounds
-                #"V,M" Venom, Melee
-                #"W" Wounds
-                #"W,M" Wounds melee
-            if index < len(all_abilities)-1:
-                div = SkillDivider.copy()
-                unit_card.paste(div, (SkillBarsOffset - 52, yAbilityOffset), div)
-                yAbilityOffset += div.size[1]
-                yAbilityOffset += dividerOffset
-    unit_card.paste(SkillBottom, (SkillBarsOffset, yAbilityOffset), SkillBottom)
-    pdb.set_trace()
-    # {'Faction': 'Stark', 'Name': 'Crannogman Trackers', 'Character': '', 'Cost': '5', 'Type': 'Infantry', 'Spd': '6', 'Attack 1': '[RS]Crannog Bow', '8': '4+', '9': '7.6.4', 'Attack 2': "[M]Tracker's Blade", '11': '4+', '12': '6.4.3', 'Def': '6+', 'Moral': '7+', 'Abilities': 'Order: Hidden Traps /\nOrder: Mark Target', 
-    #SkillFaithSilver.webp
-    #SkillFireSilver.webp
-    #SkillOrderGold.webp
-    #SkillOrderSilver.webp
-    #SkillPillageGold.webp
-    #SkillPillageSilver.webp
-    #SkillVenomGold.webp
-    #SkillWoundsGold.webp
-    #SkillWoundsSilver.webp
-    
-    # Retrieve font text
-    # Tuff-Italic appears to be the 2021 numbering on left side of card and for the attack name (Long Sword etc...)
-    # Tuff-Bold appears to be for title of abilities (in red) and keywords (in black)
-    # Tuff-Normal for all other ability text
+            if len(skillability_icon_images) > 0:
+                if len(skillability_icon_images) == 1:
+                    icon = skillability_icon_images[0][0]
+                    offx, offy = skillability_icon_images[0][1]
+                    if index < len(all_abilities)-1:
+                        yAbilityOffset += addDivider(SkillBarsOffset - 52, yAbilityOffset)
+                    unit_card.paste(icon, (SkillBarsOffset - icon.size[0] + offx, midy - int(icon.size[0]/2)+ offy), icon)
+                elif len(skillability_icon_images) == 2:
+                    icon1 = skillability_icon_images[0][0]
+                    icon2 = skillability_icon_images[1][0]
+                    offx1, offy1 = skillability_icon_images[0][1]
+                    offx2, offy2 = skillability_icon_images[1][1]
+                    #if UnitData['Name'].upper() == "PYROMANCERS":
+                    #    pdb.set_trace()
+                    if index < len(all_abilities)-1:
+                        yAbilityOffset += addDivider(SkillBarsOffset - 52, yAbilityOffset)
+                    unit_card.paste(icon1, (SkillBarsOffset - icon1.size[0] + offx1, midy - icon1.size[1] + offy1), icon1)
+                    unit_card.paste(icon2, (SkillBarsOffset - icon2.size[0] + offx2, midy + offy2), icon2)
+                else:
+                    pass # found no occurence where a single ability panel had more than 2 icons
+            elif index < len(all_abilities)-1:
+                yAbilityOffset += addDivider(SkillBarsOffset - 52, yAbilityOffset)
+
+    unit_card.paste(SkillBottom, (SkillBarsOffset, yAbilityOffset + dividerYPadding), SkillBottom)
     draw = ImageDraw.Draw(unit_card)
     GaramondBoldFont = AsoiafFonts.get('Garamond-Bold', ImageFont.load_default())
     draw.text((183, 86), UnitData['Spd'], font=GaramondBoldFont, fill="white")
@@ -680,17 +808,14 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
     rotated_text_image = text_image.rotate(90, expand=1)
     # Paste the rotated text image onto your main image (consider using the alpha channel for proper transparency)
     unit_card.paste(rotated_text_image, (rotated_text_image.width - 10, unit_card.size[1] - rotated_text_image.height - 20), rotated_text_image)
-    # "Abilities"
-    # "Attack 1"
-    # "Attack 2"
     TuffBoldFont = AsoiafFonts.get('Tuff-Bold-50', ImageFont.load_default()) 
     TuffBoldFontSmall = AsoiafFonts.get('Tuff-Bold-25', ImageFont.load_default()) 
     #print(UnitData)
     text_lines_list, hadAComma = split_name_string(UnitData['Name'].upper())
     if not hadAComma:
-        draw_centered_text(draw, (530, 744), text_lines_list, TuffBoldFont, "white", line_padding=10)
+        draw_centered_text(draw, (530, 740), text_lines_list, TuffBoldFont, "white", line_padding=10)
     else:
-        draw_centered_text(draw, (530, 744), [text_lines_list[0]], TuffBoldFont, "white", line_padding=10)
+        draw_centered_text(draw, (530, 740), [text_lines_list[0]], TuffBoldFont, "white", line_padding=10)
         draw_centered_text(draw, (530, 744 + TuffBoldFont.size ), [text_lines_list[1]], TuffBoldFontSmall, "white", line_padding=10)
     unit_card = add_rounded_corners(unit_card, 20)
     return unit_card
@@ -702,6 +827,7 @@ def main():
     AsoiafFonts = load_fonts(fonts_dir)
     data_folder=f"{assets_folder}data/"
     units_folder=f"{assets_folder}Units/"
+    attachments_folder=f"{assets_folder}Attachments/"
     graphics_folder = f"{assets_folder}graphics"
     UnitCardsOutputDir  = "./unitscards/"
     if not os.path.exists(UnitCardsOutputDir):
@@ -709,16 +835,17 @@ def main():
     AsoiafData = import_csvs_to_dicts(data_folder) # contains the keys: attachments,boxes,ncus,newskills,rules,special,tactics,units
     #SelectedUnitCardData = [x for x in AsoiafData['units'] if x['Name'] == "Gregor Clegane, The Mountain That Rides"][0]
     #SelectedUnitCardData = [x for x in AsoiafData['units'] if x['Name'] == "Lannister Crossbowmen"][0]
-    SelectedUnitCardData = [x for x in AsoiafData['units'] if x['Name'] == "Crannogman Trackers"][0]
-    unit_card = BuildUnitCardFactionBackground(SelectedUnitCardData, units_folder, graphics_folder)
-    unit_card = BuildUnitCardWithData(unit_card, SelectedUnitCardData, units_folder, graphics_folder, AsoiafFonts, AsoiafData)
-    # This is just for viewing / debugging purposes. Can click to get coordinates on image:
-    unit_card_output_path = os.path.join(UnitCardsOutputDir, f"{SelectedUnitCardData['Id'].replace(' ', '_')}.png")
-    unit_card.save(unit_card_output_path)
+    #SelectedUnitCardData = [x for x in AsoiafData['units'] if x['Name'] == "Crannogman Trackers"][0]
+    for SelectedUnitCardData in AsoiafData['units']:
+        unit_card = BuildUnitCardFactionBackground(SelectedUnitCardData, units_folder, attachments_folder, graphics_folder)
+        unit_card = BuildUnitCardWithData(unit_card, SelectedUnitCardData, units_folder, graphics_folder, AsoiafFonts, AsoiafData)
+        # This is just for viewing / debugging purposes. Can click to get coordinates on image:
+        unit_card_output_path = os.path.join(UnitCardsOutputDir, f"{SelectedUnitCardData['Id'].replace(' ', '_')}.png")
+        unit_card.save(unit_card_output_path)
     # If You Want to View the Card AND click debug to find positioning uncommont these lines:
-    root = tk.Tk()
-    app = ImageEditor(root, unit_card)
-    root.mainloop()
+    #root = tk.Tk()
+    #app = ImageEditor(root, unit_card)
+    #root.mainloop()
 
 
 if __name__ == "__main__":
