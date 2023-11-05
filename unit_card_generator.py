@@ -839,6 +839,9 @@ def main():
     #SelectedUnitCardData = [x for x in AsoiafData['units'] if x['Name'] == "Lannister Crossbowmen"][0]
     #SelectedUnitCardData = [x for x in AsoiafData['units'] if x['Name'] == "Crannogman Trackers"][0]
     for SelectedUnitCardData in AsoiafData['units']:
+        is_any_value_true = any(bool(value) for value in SelectedUnitCardData.values())
+        if not is_any_value_true:
+            continue
         unit_card = BuildUnitCardFactionBackground(SelectedUnitCardData, units_folder, attachments_folder, graphics_folder)
         unit_card = BuildUnitCardWithData(unit_card, SelectedUnitCardData, units_folder, graphics_folder, AsoiafFonts, AsoiafData)
         # This is just for viewing / debugging purposes. Can click to get coordinates on image:
