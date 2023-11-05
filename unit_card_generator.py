@@ -245,6 +245,7 @@ def add_background_to_image(original_image, faction):
     return new_image
 
 def BuildUnitCardFactionBackground(UnitData, units_folder, attachmentsfolder, graphics_folder):
+    print(f"Creating {UnitData['Name']}")
     faction = UnitData['Faction'] # faction file names dont include spaces
     faction_text_clean = re.sub(r'[^A-Za-z]', '', faction)
     UnitType = UnitData['Type'].replace(' ','')
@@ -839,7 +840,7 @@ def main():
     #SelectedUnitCardData = [x for x in AsoiafData['units'] if x['Name'] == "Lannister Crossbowmen"][0]
     #SelectedUnitCardData = [x for x in AsoiafData['units'] if x['Name'] == "Crannogman Trackers"][0]
     for SelectedUnitCardData in AsoiafData['units']:
-        is_any_value_true = any(bool(value) for value in SelectedUnitCardData.values())
+        is_any_value_true = any(bool(value) for value in SelectedUnitCardData.values())# check for empty dicts
         if not is_any_value_true:
             continue
         unit_card = BuildUnitCardFactionBackground(SelectedUnitCardData, units_folder, attachments_folder, graphics_folder)
