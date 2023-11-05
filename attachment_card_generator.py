@@ -730,9 +730,11 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
         text_lines_list2, hadAComma = split_name_string(lines[1], amnt=18)
         if len(text_lines_list) == 1:
             draw_centered_text(draw, (540+isCommanderOffsetX, 100+isCommanderOffsetY), [lines[0]], TuffBoldFont, "white", line_padding=10)
-            draw_centered_text(draw, (540+isCommanderOffsetX, 104+isCommanderOffsetY + TuffBoldFont.size ), [lines[1]], TuffBoldFontSmall, "white", line_padding=10)
-            if len(text_lines_list2) == 2:
-                draw_centered_text(draw, (540+isCommanderOffsetX, 104+isCommanderOffsetY + TuffBoldFont.size + TuffBoldFontSmall.size ), [text_lines_list2[1]], TuffBoldFontSmall, "white", line_padding=10)
+            if len(text_lines_list2) == 1:
+                draw_centered_text(draw, (540+isCommanderOffsetX, 104+isCommanderOffsetY + TuffBoldFont.size ), [lines[1]], TuffBoldFontSmall, "white", line_padding=10)
+            else:
+                draw_centered_text(draw, (540+isCommanderOffsetX, 104+isCommanderOffsetY + TuffBoldFont.size ), [text_lines_list2[0]], TuffBoldFontSmall, "white", line_padding=10)
+                draw_centered_text(draw, (540+isCommanderOffsetX, 104+isCommanderOffsetY + TuffBoldFont.size + TuffBoldFontSmall.size), [text_lines_list2[1]], TuffBoldFontSmall, "white", line_padding=10)
         else:
             draw_centered_text(draw, (540+isCommanderOffsetX, 80+isCommanderOffsetY), [text_lines_list[0]], TuffBoldFont, "white", line_padding=10)
             draw_centered_text(draw, (540+isCommanderOffsetX, 80+isCommanderOffsetY + TuffBoldFont.size), [text_lines_list[1]], TuffBoldFont, "white", line_padding=10)
