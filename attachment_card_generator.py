@@ -429,7 +429,6 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
     SkillBottom = SkillBottom.resize((int(SkillBottom.size[0]*1.05), int(SkillBottom.size[1]*1.2)))
     SkillDivider = Image.open(f"{units_folder}Divider{faction_text_clean}.webp").convert('RGBA')
     SkillDivider = SkillDivider.resize((int(SkillDivider.size[0]*1.1), SkillDivider.size[1]))
-    SkillDivider = SkillDivider.resize(( SkillDivider.size[0], int(SkillDivider.size[1]/2) ))
     DecorStar1 = Image.open(f"{tactics_folder}Decor{faction_text_clean}.webp").convert('RGBA')
     DecorStar2 = DecorStar1.copy()
     DecorStar3 = DecorStar1.copy()
@@ -641,6 +640,8 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
             except IndexError as e:
                 all_abilities.remove(ability_text)
                 continue
+        if len(all_abilities) > 3: # only one card with this that caused problems but this fixed it
+            SkillDivider = SkillDivider.resize(( SkillDivider.size[0], int(SkillDivider.size[1]/2) ))
         for index in range(len(all_abilities)):
             ability = all_abilities[index]
             skillability_icon_images = []
