@@ -236,10 +236,18 @@ def draw_icon(image, icon, x_current, y_current, max_height):
     # Return the new x position, which is to the right of the icon we just drew
     return x_current + scaled_width
 
-def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_italic, title, text_body, color, y_top, x_left, x_right, graphics_folder, padding=2):
+def insert_space_before_brackets(text):
+    return re.sub(r'(\S)\[', r'\1 [', text)
+
+def insert_padding_line_before_large_icon(text):
+    return re.sub(r'\[(ATTACK|SKILL)(.+?)\]', r'\n[\1\2]\n', text)
+
+
+def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_italic, title, text_body, color, y_top, x_left, x_right, graphics_folder, units_folder, faction, AsoiafFonts, padding=2):
     # Initialize the drawing context
     draw = ImageDraw.Draw(image)
-    
+    text_body = insert_space_before_brackets(text_body)
+    text_body = insert_padding_line_before_large_icon(text_body)
     # Draw the title using the bold font
     draw.text((x_left, y_top), title.strip(), font=bold_font, fill=color)
     
@@ -297,9 +305,14 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
                         # Draw the word before the icon
                         x_current, y_current = draw_text_part(draw, x_current, y_current, word, font, "black")
                         # Load and draw the icon
-                        icon = Image.open(f"{graphics_folder}/{icon_key}.png").convert('RGBA')
-                        if icon:
-                            x_current = draw_icon(image, icon, x_current, y_current+14, max_height+18)
+                        soff = 15
+                        icon, new_width = create_icon_image(graphics_folder, units_folder, icon_key, max_height+soff, faction, AsoiafFonts)
+                        image.paste(icon, (x_current-3, y_current-soff+2), mask=icon)
+                        x_current += icon.size[0]
+                        #icon = Image.open(f"{graphics_folder}/{icon_key}.png").convert('RGBA')
+                        #if icon:
+                            #x_current = draw_icon(image, icon, x_current, y_current+14, max_height+18)
+                            #icon_image = create_icon_image(graphics_folder, units_folder, icon_key, max_height, faction, AsoiafFonts)
                         continue  # Skip the rest of the loop and don't draw this word as text
                     # Draw the word
                     x_current, y_current = draw_text_part(draw, x_current, y_current, word, font, "black")
@@ -307,6 +320,99 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
         y_current += max_height + padding
     return image, y_current
 
+def MakeAttackBar(atktype, atkrange, atkText, atk_ranks, tohit, ArmyAttackAndAbilitiesBorderColor, units_folder, graphics_folder, AsoiafFonts):
+    canvas = LayeredImageCanvas(350, 150)
+    xoffset = -5
+    yoffset = -210
+    silver_attack_type_sword = Image.open(f"{units_folder}AttackTypeBg{ArmyAttackAndAbilitiesBorderColor}.webp").convert('RGBA')
+    silver_attack_type_border = Image.open(f"{units_folder}AttackType.{atktype}{ArmyAttackAndAbilitiesBorderColor}.webp").convert('RGBA')
+    width, height = [int(x*1.1) for x in silver_attack_type_border.size]
+    silver_attack_type_border = silver_attack_type_border.resize((width, height))
+    silver_attack_tan_background = Image.open(f"{units_folder}AttackBg{ArmyAttackAndAbilitiesBorderColor}.webp").convert('RGBA')
+    silver_attack_dice_background = Image.open(f"{units_folder}DiceBg.webp").convert('RGBA')
+    atk_stat_bg_image = Image.open(f"{units_folder}StatBg.webp").convert('RGBA')
+    atkColor = "#001a53"
+    if atkrange:
+        atkColor = "#a71208" # dark red
+        range_bg_image = Image.open(f"{graphics_folder}/Range{atkrange}{ArmyAttackAndAbilitiesBorderColor}.png").convert('RGBA')
+        canvas.add_layer(range_bg_image, xoffset+90, yoffset+210, depth=4)
+    #silver_attack_tan_background
+    GBFont = AsoiafFonts.get('Tuff-Italic-30', ImageFont.load_default())
+    text_lines_list = split_on_center_space(atkText.upper())
+    draw = ImageDraw.Draw(silver_attack_tan_background)
+    x,y = [int(x/2) for x in silver_attack_tan_background.size]
+    draw_centered_text(draw, (x+10, y - 12), text_lines_list, GBFont, atkColor, line_padding=4)
+    #draw.text((17, 17), atkText, font=GBFont, fill=atkColor)
+    canvas.add_layer(silver_attack_tan_background, xoffset+60, yoffset+220, depth=0)
+    canvas.add_layer(silver_attack_dice_background, xoffset+100, yoffset+293, depth=2)
+    draw = ImageDraw.Draw(atk_stat_bg_image)
+    GBFont = AsoiafFonts.get('Garamond-Bold',ImageFont.load_default())
+    draw.text((17, 17), tohit, font=GBFont, fill="white")
+    canvas.add_layer(atk_stat_bg_image, xoffset+83, yoffset+280, depth=3)
+    canvas.add_layer(silver_attack_type_border, xoffset+8, yoffset+210, depth=2)
+    canvas.add_layer(silver_attack_type_sword, xoffset+20, yoffset+220, depth=1)
+    colors = [(74,124,41,240),(231,144,14,240),(207,10,10,240)]
+    yoffset += 10
+    xoffset += 65
+    #Garamond-Bold
+    GBSmallFont = AsoiafFonts.get('Garamond-Bold-35',ImageFont.load_default())
+    for i in range(len(atk_ranks)):
+        #  Image.new('RGBA', [160, 40], (255, 255, 255, 0))
+        img = Image.new("RGBA", (34, 34), colors[i])
+        draw = ImageDraw.Draw(img)
+        draw.text((8, 1), atk_ranks[i], font=GBSmallFont, fill="white")
+        canvas.add_layer( add_rounded_corners( img , 4) , xoffset+100, yoffset+293, depth=3)
+        xoffset += 42
+    return canvas.render()
+
+def create_icon_image(graphics_folder, units_folder, icon_key, max_height, faction, AsoiafFonts):
+    # './assets/graphics/ATTACK:Ranged:Ranged Volley:3+3.png'
+    imgfound = True
+    icon = False
+    icon_path = f"{graphics_folder}/{icon_key}.png"
+    if 'SKILL:' in icon_key:
+        skill = icon_key.split(':')[1]
+        border = "Gold"
+        if faction in ArmyAttackAndAbilitiesBorderColors:
+            border = ArmyAttackAndAbilitiesBorderColors[faction]
+        icon_path = f"{units_folder}/Skill{skill}{border}.webp"
+        max_height = 100
+    if 'ATTACK:' in icon_key:
+        # ATTACK:Ranged:Ranged Volley:3+3
+        # ATTACK:Ranged:Ranged Volley:3+3,2,1
+        # ATTACK:LongRanged:Hurl Boulder:3+1
+        border = "Gold"
+        if faction in ArmyAttackAndAbilitiesBorderColors:
+            border = ArmyAttackAndAbilitiesBorderColors[faction]
+        atkrange = False
+        p1, atktype, atkText, p4 = icon_key.split(':')
+        if atktype == "LongRanged":
+            atkrange = "Long"
+            atktype = "Ranged"
+        elif atktype == "ShortRanged":
+            atkrange = "Short"
+            atktype = "Ranged"
+        tohit, atk_ranks = p4.split('+')
+        tohit += "+"
+        atk_ranks = atk_ranks.split(',')
+        icon = MakeAttackBar(atktype, atkrange, atkText, atk_ranks, tohit, border, units_folder, graphics_folder, AsoiafFonts)
+        max_height = 120
+    if not os.path.isfile(icon_path) and not icon:
+        imgfound = False
+        print(f"Invalid icon image {icon_path}")
+        icon_path = f"{graphics_folder}/IconQuestion.png"
+    if not icon:
+        icon = Image.open(icon_path).convert('RGBA')
+    aspect_ratio = icon.width / icon.height
+    new_width = int(aspect_ratio * max_height)
+    icon = icon.resize((new_width, max_height), Image.Resampling.LANCZOS)
+    stat = ImageStat.Stat(icon)
+    mean_color = stat.mean[:3] 
+    if all(x > 100 for x in mean_color) or not imgfound:
+        black_icon = Image.new('RGB', icon.size, color='black')
+        black_icon.putalpha(icon.getchannel('A'))
+        icon = black_icon
+    return icon, new_width
 
 class LayeredImageCanvas:
 
@@ -417,6 +523,12 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
         unit_type_image = Image.open(fp).convert('RGBA')
     faction_crest = Image.open(f"{tactics_folder}Crest{faction_text_clean}.webp").convert('RGBA')
     width, height = [int(x*0.7) for x in faction_crest.size]
+    if faction_text_clean.lower() in ['greyjoy']:
+        width = int(width * 1.25)
+        height = int(height * 1.1)
+    elif faction_text_clean.lower() in ['targaryen']:
+        width = int(width * 0.9)
+        height = int(height * 0.9)
     scaled_faction_crest = faction_crest.resize((width, height))
     attach_portrait = Image.open(f"{attachments_folder}{AttachId}.jpg").convert('RGBA')
 
@@ -507,6 +619,12 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
             unit_type_image = unit_type_image.resize((width, height))
             canvas.add_layer(unit_type_image, left_right_top_offset+attach_portrait.size[0]-9, left_right_top_offset+half_height_width, depth=3)
         width, height = [int(x*0.6) for x in faction_crest.size]
+        if faction_text_clean.lower() in ['greyjoy']:
+            width = int(width * 1.25)
+            height = int(height * 1.1)
+        elif faction_text_clean.lower() in ['targaryen']:
+            width = int(width * 0.9)
+            height = int(height * 0.9)
         scaled_faction_crest = faction_crest.resize((width, height))
         if faction == 'Neutral':
             scaled_faction_crest = scaled_faction_crest.resize( ( scaled_faction_crest.size[0], int(scaled_faction_crest.size[1]*0.9) ) )
@@ -640,6 +758,15 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
             except IndexError as e:
                 all_abilities.remove(ability_text)
                 continue
+        GBFont = AsoiafFonts.get('Tuff-Bold-38',ImageFont.load_default())
+        TN = AsoiafFonts.get('Tuff-Bold-38',ImageFont.load_default())
+        TN30 = AsoiafFonts.get('Tuff-Normal-32',ImageFont.load_default())
+        TN30I = AsoiafFonts.get('Tuff-Italic-32',ImageFont.load_default())
+        if len(all_abilities) > 3:
+            GBFont = AsoiafFonts.get('Tuff-Bold-33',ImageFont.load_default())
+            TN = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
+            TN30 = AsoiafFonts.get('Tuff-Normal-28',ImageFont.load_default())
+            TN30I = AsoiafFonts.get('Tuff-Italic-28',ImageFont.load_default())
         if len(all_abilities) > 3: # only one card with this that caused problems but this fixed it
             SkillDivider = SkillDivider.resize(( SkillDivider.size[0], int(SkillDivider.size[1]/2) ))
         for index in range(len(all_abilities)):
@@ -678,12 +805,8 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
                         width, height = [int(x*skillScalePercent) for x in sk.size]
                         sk = sk.resize((width, height))
                         skillability_icon_images.append( [sk,off] )
-            GBFont = AsoiafFonts.get('Tuff-Bold-33',ImageFont.load_default())
-            TN = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
-            TN30 = AsoiafFonts.get('Tuff-Normal-28',ImageFont.load_default())
-            TN30I = AsoiafFonts.get('Tuff-Italic-28',ImageFont.load_default())
             starty = yAbilityOffset+0
-            attach_card, yAbilityOffset = draw_markdown_text(attach_card, GBFont, TN, TN30, TN30I, ability.upper().split('(')[0].strip(), skilldata['Description'].strip(), FactionColor, yAbilityOffset-4, textBoundLeft, textBoundRight, graphics_folder, padding=10)
+            attach_card, yAbilityOffset = draw_markdown_text(attach_card, GBFont, TN, TN30, TN30I, ability.upper().split('(')[0].strip(), skilldata['Description'].strip(), FactionColor, yAbilityOffset-4, textBoundLeft, textBoundRight, graphics_folder, units_folder, faction, AsoiafFonts, padding=10)
             yAbilityOffset -= 4
             midy = starty + int((yAbilityOffset-starty) / 2 )
             if len(skillability_icon_images) > 0:
