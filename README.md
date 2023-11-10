@@ -1,4 +1,14 @@
 # asoiaf_card_generator
-takes cmon data to generate asoiaf cards. So far only units/attachments cards. Unit builder only finished
+takes cmon data to generate asoiaf cards. 
 
-Currently, this assumes you are running it from the assets/flutter_assets folder
+Builds the front side of the:
+* Attachments
+* NCUS
+* Tactics
+* Specials
+* Combat Unis
+
+Made props for help on tactics by Pf2eTools over at:
+
+https://github.com/Pf2eTools/asoiaf_card_generator/tree/main
+
