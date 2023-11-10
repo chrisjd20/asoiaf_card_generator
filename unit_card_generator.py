@@ -822,10 +822,10 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
     #print(UnitData)
     text_lines_list, hadAComma = split_name_string(UnitData['Name'].upper())
     if not hadAComma:
-        draw_centered_text(draw, (530, 740), text_lines_list, TuffBoldFont, "white", line_padding=10)
+        draw_centered_text(draw, (530, 750), text_lines_list, TuffBoldFont, "white", line_padding=10)
     else:
-        draw_centered_text(draw, (530, 740), [text_lines_list[0]], TuffBoldFont, "white", line_padding=10)
-        draw_centered_text(draw, (530, 744 + TuffBoldFont.size ), [text_lines_list[1]], TuffBoldFontSmall, "white", line_padding=10)
+        draw_centered_text(draw, (530, 750), [text_lines_list[0]], TuffBoldFont, "white", line_padding=10)
+        draw_centered_text(draw, (530, 750 + int(TuffBoldFont.size/1.3) ), [text_lines_list[1]], TuffBoldFontSmall, "white", line_padding=10)
     unit_card = add_rounded_corners(unit_card, 20)
     return unit_card
 
