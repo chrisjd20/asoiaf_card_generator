@@ -873,6 +873,14 @@ def BuildNcuCardFactionWithData(NcuData, units_folder, attachments_folder, graph
         else:
             draw_centered_text(draw, (540+nameOffsetX, 100+nameOffsetY), [text_lines_list[0]], TuffBoldFont, "white", line_padding=10)
             draw_centered_text(draw, (540+nameOffsetX, 104+nameOffsetY + TuffBoldFont.size ), [text_lines_list[1]], TuffBoldFont, "white", line_padding=10)
+    VersionFont = AsoiafFonts.get('Tuff-Italic-25', ImageFont.load_default())
+    text_image = Image.new('RGBA', [160, 40], (255, 255, 255, 0))  # transparent background
+    text_draw = ImageDraw.Draw(text_image)
+    text_draw.text((0, 0), NcuData['Version'], font=VersionFont, fill="white")
+    # Rotate the text image
+    rotated_text_image = text_image.rotate(90, expand=1)
+    # Paste the rotated text image onto your main image (consider using the alpha channel for proper transparency)
+    ncu_card.paste(rotated_text_image, (rotated_text_image.width - 30, ncu_card.size[1] - rotated_text_image.height - 60), rotated_text_image)
     return ncu_card
 
 
