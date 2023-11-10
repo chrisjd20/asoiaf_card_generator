@@ -495,6 +495,7 @@ def draw_icon(image, icon, x_current, y_current, max_height):
 def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_italic, title, text_body, color, y_top, x_left, x_right, graphics_folder, padding=2):
     # Initialize the drawing context
     draw = ImageDraw.Draw(image)
+    text_body = text_body.replace('**.','.**').replace('*.','.*')
     
     # Draw the title using the bold font
     draw.text((x_left, y_top), title.strip(), font=bold_font, fill=color)
@@ -555,7 +556,7 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
                         # Load and draw the icon
                         icon = Image.open(f"{graphics_folder}/{icon_key}.png").convert('RGBA')
                         if icon:
-                            x_current = draw_icon(image, icon, x_current, y_current+14, max_height+18)
+                            x_current = draw_icon(image, icon, x_current, y_current+12, max_height+16)
                         continue  # Skip the rest of the loop and don't draw this word as text
                     # Draw the word
                     x_current, y_current = draw_text_part(draw, x_current, y_current, word, font, "black")
@@ -646,7 +647,7 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
     SkillBottom = Image.open(f"{units_folder}SkillBottom{faction_text_clean}.webp").convert('RGBA')
     SkillTop = SkillBottom.copy().transpose(Image.FLIP_TOP_BOTTOM)
     SkillDivider = Image.open(f"{units_folder}Divider{faction_text_clean}.webp").convert('RGBA')
-    yAbilityOffset = 45
+    yAbilityOffset = 40
     dividerOffset = 20
     SkillBarsOffset = 860
     canvas.add_layer( SkillTop , SkillBarsOffset-5, yAbilityOffset - SkillTop.size[1], depth=3)
@@ -738,6 +739,15 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
             except IndexError as e:
                 all_abilities.remove(ability_text)
                 continue
+        GBFont = AsoiafFonts.get('Tuff-Bold-38',ImageFont.load_default())
+        TN = AsoiafFonts.get('Tuff-Bold-37',ImageFont.load_default())
+        TN30 = AsoiafFonts.get('Tuff-Normal-32',ImageFont.load_default())
+        TN30I = AsoiafFonts.get('Tuff-Italic-32',ImageFont.load_default())
+        if len(all_abilities) > 2:
+            GBFont = AsoiafFonts.get('Tuff-Bold-33',ImageFont.load_default())
+            TN = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
+            TN30 = AsoiafFonts.get('Tuff-Normal-28',ImageFont.load_default())
+            TN30I = AsoiafFonts.get('Tuff-Italic-28',ImageFont.load_default())
         for index in range(len(all_abilities)):
             ability = all_abilities[index]
             skillability_icon_images = []
@@ -764,10 +774,6 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
                         if skill in ['M','R']: # if melee or ranged
                             off = [10,-5]
                         skillability_icon_images.append( [SkillsAndAbiitiesIconsTable[skill].copy(),off] )
-            GBFont = AsoiafFonts.get('Tuff-Bold-33',ImageFont.load_default())
-            TN = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
-            TN30 = AsoiafFonts.get('Tuff-Normal-28',ImageFont.load_default())
-            TN30I = AsoiafFonts.get('Tuff-Italic-28',ImageFont.load_default())
             starty = yAbilityOffset+0
             unit_card, yAbilityOffset = draw_markdown_text(unit_card, GBFont, TN, TN30, TN30I, ability.upper().split('(')[0].strip(), skilldata['Description'].strip(), FactionColor, yAbilityOffset, 885, 1400, graphics_folder, padding=10)
             midy = starty + int((yAbilityOffset-starty) / 2 )
