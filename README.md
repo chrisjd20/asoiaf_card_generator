@@ -12,4 +12,4 @@ Made props for help on tactics cards by Pf2eTools over at:
 
 https://github.com/Pf2eTools/asoiaf_card_generator/tree/main
 
-Although I tweaked what he started with so his stuff is probably better since I pushed mine. 
+Although I tweaked what he started with so his stuff will probably better than mine in the long run once he finishes. 
