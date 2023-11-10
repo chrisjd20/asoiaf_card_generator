@@ -8,7 +8,8 @@ Builds the front side of the:
 * Specials
 * Combat Unis
 
-Made props for help on tactics by Pf2eTools over at:
+Made props for help on tactics cards by Pf2eTools over at:
 
 https://github.com/Pf2eTools/asoiaf_card_generator/tree/main
 
+Although I tweaked what he started with so his stuff is probably better since I pushed mine. 
