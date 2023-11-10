@@ -750,7 +750,7 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
         return div.size[1] + dividerOffset + int(dividerYPadding/2)
     if 'Abilities' in AttachData and AttachData['Abilities']:
         backofcardabilities = [x.lower() for x in ['adaptive']] # There is nothing in the data that differentiates a back of card ability so we will have to manually set it here.
-        all_abilities = [x.strip() for x in AttachData['Abilities'].strip().split('/') if x.strip().lower() not in backofcardabilities and not x.strip().lower().startswith('loyalty:')]
+        all_abilities = [x.strip() if ']' not in x else x.strip().split(']')[1] for x in AttachData['Abilities'].strip().split('/') if x.strip().lower() not in backofcardabilities and not x.strip().lower().startswith('loyalty:')]
         copy_all_abilities = all_abilities.copy()
         for ability_text in copy_all_abilities:
             try:
