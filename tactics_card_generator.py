@@ -993,18 +993,18 @@ def AddTacticsCardTextWithTranslations(card_image, TacticsCardData, units_folder
     draw = ImageDraw.Draw(card_image)
     #if not isCommander:
     #    
-    TuffBoldFont = AsoiafFonts.get('Tuff-Bold-45', ImageFont.load_default())
+    TuffBoldFont = AsoiafFonts.get('Tuff-Bold-43', ImageFont.load_default())
     if lang in ['de','fr']:
-        TuffBoldFont = AsoiafFonts.get('Tuff-Bold-42', ImageFont.load_default()) 
+        TuffBoldFont = AsoiafFonts.get('Tuff-Bold-40', ImageFont.load_default()) 
     if isCommander:
-        CmdrTuffBoldFont = AsoiafFonts.get('Tuff-Bold-40', ImageFont.load_default())
+        CmdrTuffBoldFont = AsoiafFonts.get('Tuff-Bold-38', ImageFont.load_default())
         if len(commander_name) > 46:
-            CmdrTuffBoldFont = AsoiafFonts.get('Tuff-Bold-30', ImageFont.load_default())
+            CmdrTuffBoldFont = AsoiafFonts.get('Tuff-Bold-28', ImageFont.load_default())
         elif len(commander_name) > 40:
-            CmdrTuffBoldFont = AsoiafFonts.get('Tuff-Bold-32', ImageFont.load_default())
+            CmdrTuffBoldFont = AsoiafFonts.get('Tuff-Bold-30', ImageFont.load_default())
         elif len(commander_name) > 30:
-            CmdrTuffBoldFont = AsoiafFonts.get('Tuff-Bold-36', ImageFont.load_default())
-        draw_centered_text(draw, (int(card_image.size[0]/2), 297), [commander_name], CmdrTuffBoldFont, "white", line_padding=10)
+            CmdrTuffBoldFont = AsoiafFonts.get('Tuff-Bold-34', ImageFont.load_default())
+        draw_centered_text(draw, (int(card_image.size[0]/2), 297), [commander_name.upper()], CmdrTuffBoldFont, "white", line_padding=10)
     #print(name)
     line_limit = 16
     text_lines_list, hadAComma = split_name_string(name.upper(), amnt=line_limit)
