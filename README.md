@@ -1,5 +1,5 @@
 # asoiaf_card_generator
-Takes cmon data from war council apl to generate asoiaf cards. 
+Takes cmon data from war council apk to generate asoiaf cards. 
 
 Builds the front side of the:
 * Attachments
