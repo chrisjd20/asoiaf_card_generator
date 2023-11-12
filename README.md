@@ -30,6 +30,8 @@ I dont think im going to work on `scn` or `tcn` translations for a while cause t
 
 I realize these cards are not exact copy of the CMON ones in the app. My main goal was to fit all the data onto the cards so they are playable. Please dont report bugs about alignment or spacing etc... Unless its like information doesnt fit on screen or something is rendered/displayed invalidly. 
 
+### Credits:
+
 Credit for tactics cards creation goes to Pf2eTools over at:
 
 https://github.com/Pf2eTools/asoiaf_card_generator/tree/main
