@@ -6,6 +6,8 @@ import pdb
 from PIL import Image, ImageDraw, ImageFont, ImageTk, ImageStat
 import sys
 import re
+from pathlib import Path
+
 
 #pip install pillow
 
@@ -82,8 +84,10 @@ def load_fonts(fonts_folder):
             print(f"Failed to load font {font_file}: {str(e)}")
     return fonts
 
-def import_csvs_to_dicts(assets_data_folder):
+def import_csvs_to_dicts(assets_data_folder, lang=False):
     csv_files = [f for f in os.listdir(assets_data_folder) if f.endswith('.csv')]
+    if lang:
+        csv_files = [f for f in os.listdir(assets_data_folder) if f.endswith('.csv') and f'.{lang}.' in f]
     all_data = {}
     for csv_file in csv_files:
         file_path = os.path.join(assets_data_folder, csv_file)
@@ -492,10 +496,74 @@ def draw_icon(image, icon, x_current, y_current, max_height):
     # Return the new x position, which is to the right of the icon we just drew
     return x_current + scaled_width
 
-def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_italic, title, text_body, color, y_top, x_left, x_right, graphics_folder, padding=2):
+# Function to replace patterns with placeholders
+def replace_with_placeholders(text, patterns):
+    placeholders = {}
+    for i, pattern in enumerate(patterns):
+        matches = re.findall(pattern, text)
+        for match in matches:
+            placeholder = f"UNIQUE_PLACEHOLDER_{i}_{matches.index(match)}"
+            placeholders[placeholder] = match
+            text = text.replace(match, placeholder)
+    # Replace newline characters with a unique placeholder
+    text = text.replace('\n', 'UNIQUE_NEWLINE_PLACEHOLDER')
+    return text, placeholders
+
+# Function to restore patterns from placeholders
+def restore_placeholders(text, placeholders):
+    # Restore newline characters from the placeholder
+    text = text.replace('UNIQUE_NEWLINE_PLACEHOLDER', '\n')
+    for placeholder, original in placeholders.items():
+        text = text.replace(placeholder, original)
+    return text
+
+def wrap_markdown_individual_words(text_body):
+    def mark_indexes(text, marker):
+        # Find all indexes of standalone markers
+        if marker == '*':
+            indexes = [m.start() for m in re.finditer(r'(?<!\*)\*(?!\*)', text)]
+        elif marker == '**':
+            indexes = [m.start() for m in re.finditer(r'(?<!\*)\*\*(?!\*)', text)]
+        return indexes
+
+    def wrap_text(text, indexes, marker):
+        new_text = ''
+        last_index = 0
+        for start, end in zip(indexes[::2], indexes[1::2]):
+            # Add the text before the marker
+            new_text += text[last_index:start]
+            # Wrap the words in the marked section
+            marked_section = text[start + len(marker):end]
+            # Split by words and preserve newlines
+            wrapped_section = ''.join([f'{marker}{word}{marker}' if word.strip() else word
+                                    for word in re.split(r'(\s+)', marked_section)])
+            new_text += wrapped_section
+            last_index = end + len(marker)
+        # Add the remaining part of the text
+        new_text += text[last_index:]
+        return new_text
+    # Process for italic
+    italic_indexes = mark_indexes(text_body, '*')
+    text_body = wrap_text(text_body, italic_indexes, '*')
+
+    # Process for bold
+    bold_indexes = mark_indexes(text_body, '**')
+    text_body = wrap_text(text_body, bold_indexes, '**')
+    return text_body
+
+def insert_space_before_after_brackets(text):
+    # Insert a space before '[' if it is preceded by a non-space character
+    text = re.sub(r'(\S)\[', r'\1 [', text)
+    # Insert a space after ']' if it is followed by a non-space character
+    text = re.sub(r'\](\S)', r'] \1', text)
+    return text
+
+def insert_padding_line_before_large_icon(text):
+    return re.sub(r'\[(ATTACK|SKILL)(.+?)\]', r'\n[\1\2]\n', text)
+
+def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_italic, title, text_body, color, y_top, x_left, x_right, graphics_folder, lang, padding=2):
     # Initialize the drawing context
     draw = ImageDraw.Draw(image)
-    text_body = text_body.replace('**.','.**').replace('*.','.*')
     
     # Draw the title using the bold font
     draw.text((x_left, y_top), title.strip(), font=bold_font, fill=color)
@@ -507,8 +575,15 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
     
     # Define line height using the regular font
     max_height = draw.textbbox((0, 0), 'Hy', font=regular_font)[3]  # 'Hy' for descenders and ascenders
-
     # Split the text body by lines
+    text_body = text_body.replace('**.','.**').replace('*.','.*')
+    text_body = text_body.replace(' :',':')
+    text_body = text_body.replace('**:',':**').replace('*:',':*')
+    text_body = '\n'.join([x.strip() for x in text_body.split('\n') if x.strip() != ''])
+    text_body = insert_space_before_after_brackets(text_body)
+    text_body = insert_padding_line_before_large_icon(text_body)
+    text_body = wrap_markdown_individual_words(text_body)
+    text_body = text_body.replace('*[','[').replace('*[','[').replace(']*',']').replace(']*',']')
     lines = [x.strip() for x in text_body.split('\n')]
 
     # Function to handle the drawing of text parts with the appropriate style
@@ -537,7 +612,7 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
                 font = regular_font  # Reset to regular font for non-bold parts
 
             # Split the part into italic parts and draw each one
-            italic_parts = bold_part.split('*')
+            italic_parts = [x for x in bold_part.split('*') if x != '']
             for i, italic_part in enumerate(italic_parts):
                 if i % 2 == 1:
                     # This part is italic
@@ -556,7 +631,13 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
                         # Load and draw the icon
                         icon = Image.open(f"{graphics_folder}/{icon_key}.png").convert('RGBA')
                         if icon:
-                            x_current = draw_icon(image, icon, x_current, y_current+12, max_height+16)
+                            aspect_ratio = icon.width / icon.height
+                            scaled_height = max_height+16
+                            scaled_width = int(aspect_ratio * scaled_height)
+                            if x_current + scaled_width  > x_right:
+                                x_current = x_left
+                                y_current += max_height + padding
+                            x_current = draw_icon(image, icon, x_current, y_current+12, scaled_height)
                         continue  # Skip the rest of the loop and don't draw this word as text
                     # Draw the word
                     x_current, y_current = draw_text_part(draw, x_current, y_current, word, font, "black")
@@ -564,12 +645,15 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
         y_current += max_height + padding
     return image, y_current
 
-def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, AsoiafFonts, AsoiafData):
+def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, AsoiafFonts, AsoiafData, lang, AsoiafDataTranslations):
     canvas = LayeredImageCanvas(unit_card.size[0], unit_card.size[1])
     canvas.add_layer(unit_card, 0, 0, depth=0)
     faction = UnitData['Faction']
     faction_text_clean = re.sub(r'[^A-Za-z]', '', faction)
     FactionColor = "#7FDBFF" # AQUA default in case new army or somethign
+    translated_unit_data = False
+    if AsoiafDataTranslations:
+        translated_unit_data = [x for x in AsoiafDataTranslations["units"] if x['Id'].strip() == UnitData['Id'].strip()][0]
     if faction in FactionColors:
         FactionColor = FactionColors[faction]
     ArmyAttackAndAbilitiesBorderColor = "Gold"
@@ -588,7 +672,7 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
             atkrange = "Short"
         return atktype, atkrange, atkstring.split(']')[1]
     
-    def MakeAttackBar(atkdata, atk_ranks, tohit, xoffset=0, yoffset=0):
+    def MakeAttackBar(atkdata, atk_ranks, tohit, atk1_or_atk2, xoffset=0, yoffset=0):
         atktype, atkrange, atkText = attackType(atkdata)
         silver_attack_type_sword = Image.open(f"{units_folder}AttackTypeBg{ArmyAttackAndAbilitiesBorderColor}.webp").convert('RGBA')
         silver_attack_type_border = Image.open(f"{units_folder}AttackType.{atktype}{ArmyAttackAndAbilitiesBorderColor}.webp").convert('RGBA')
@@ -604,12 +688,19 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
             canvas.add_layer(range_bg_image, xoffset+90, yoffset+210, depth=4)
         #silver_attack_tan_background
         GBFont = AsoiafFonts.get('Tuff-Italic-30', ImageFont.load_default())
-        text_lines_list = split_on_center_space(atkText.upper())
-        draw = ImageDraw.Draw(silver_attack_tan_background)
+        if lang in ['de','fr']:
+            GBFont = AsoiafFonts.get('Tuff-Italic-29', ImageFont.load_default())
+        atk_text_to_draw = atkText.upper()
+        if translated_unit_data:
+            atk_text_to_draw = translated_unit_data[atk1_or_atk2]
+        text_lines_list = split_on_center_space(atk_text_to_draw)
         x,y = [int(x/2) for x in silver_attack_tan_background.size]
-        draw_centered_text(draw, (x+10, y - 12), text_lines_list, GBFont, atkColor, line_padding=4)
+        tmp_for_atkname = Image.new('RGBA', silver_attack_tan_background.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(tmp_for_atkname)
+        draw_centered_text(draw, (x+10, y - 11), text_lines_list, GBFont, atkColor, line_padding=4)
         #draw.text((17, 17), atkText, font=GBFont, fill=atkColor)
         canvas.add_layer(silver_attack_tan_background, xoffset+60, yoffset+220, depth=0)
+        canvas.add_layer(tmp_for_atkname, xoffset+60, yoffset+220, depth=4)
         canvas.add_layer(silver_attack_dice_background, xoffset+100, yoffset+293, depth=2)
         draw = ImageDraw.Draw(atk_stat_bg_image)
         GBFont = AsoiafFonts.get('Garamond-Bold',ImageFont.load_default())
@@ -617,6 +708,7 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
         canvas.add_layer(atk_stat_bg_image, xoffset+83, yoffset+280, depth=3)
         canvas.add_layer(silver_attack_type_border, xoffset+8, yoffset+210, depth=2)
         canvas.add_layer(silver_attack_type_sword, xoffset+20, yoffset+220, depth=1)
+        tmp_for_atkname
         colors = [(74,124,41,240),(231,144,14,240),(207,10,10,240)]
         yoffset += 10
         xoffset += 65
@@ -629,20 +721,22 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
             draw.text((8, 1), atk_ranks[i], font=GBSmallFont, fill="white")
             canvas.add_layer( add_rounded_corners( img , 4) , xoffset+100, yoffset+293, depth=3)
             xoffset += 42
-    if 'Attack 1' in UnitData and UnitData['Attack 1']:
-        atk1 = UnitData['Attack 1']
+    atk_text1 = 'Attack 1'
+    if atk_text1 in UnitData and UnitData[atk_text1]:
+        atk1 = UnitData[atk_text1]
         xoffset = 40
         yoffset = 0
         tohit = UnitData['8']
         atk_ranks = UnitData['9'].split('.')
-        MakeAttackBar(atk1, atk_ranks, tohit, xoffset=xoffset, yoffset=yoffset)
-    if 'Attack 2' in UnitData and UnitData['Attack 2']:
-        atk2 = UnitData['Attack 2']
+        MakeAttackBar(atk1, atk_ranks, tohit, atk_text1, xoffset=xoffset, yoffset=yoffset)
+    atk_text2 = 'Attack 2'
+    if atk_text2 in UnitData and UnitData[atk_text2]:
+        atk2 = UnitData[atk_text2]
         xoffset = 40
         yoffset = 200
         tohit = UnitData['11']
         atk_ranks = UnitData['12'].split('.')
-        MakeAttackBar(atk2, atk_ranks, tohit, xoffset=xoffset, yoffset=yoffset)
+        MakeAttackBar(atk2, atk_ranks, tohit, atk_text2, xoffset=xoffset, yoffset=yoffset)
     # AsoiafData
     SkillBottom = Image.open(f"{units_folder}SkillBottom{faction_text_clean}.webp").convert('RGBA')
     SkillTop = SkillBottom.copy().transpose(Image.FLIP_TOP_BOTTOM)
@@ -739,24 +833,51 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
             except IndexError as e:
                 all_abilities.remove(ability_text)
                 continue
-        GBFont = AsoiafFonts.get('Tuff-Bold-38',ImageFont.load_default())
-        TN = AsoiafFonts.get('Tuff-Bold-37',ImageFont.load_default())
-        TN30 = AsoiafFonts.get('Tuff-Normal-32',ImageFont.load_default())
-        TN30I = AsoiafFonts.get('Tuff-Italic-32',ImageFont.load_default())
+        tmp_ability_text = ""
+        for ability in all_abilities:
+            tmpt = [x['Description'] for x in AsoiafData['newskills'] if x['Name'].strip().lower() == ability.lower()][0]
+            if AsoiafDataTranslations:
+                try:
+                    tmpt = [x['Translated Description'] for x in AsoiafDataTranslations["newskills"] if x['Original Name'].strip().lower() == ability.lower()][0]
+                except Exception as e:
+                    pass
+            tmp_ability_text += tmpt
+        GBFontSize = 38
+        TNSize = 37
+        TN30Size = 32
+        TN30ISize = 32
         if len(all_abilities) > 2:
-            GBFont = AsoiafFonts.get('Tuff-Bold-33',ImageFont.load_default())
-            TN = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
-            TN30 = AsoiafFonts.get('Tuff-Normal-28',ImageFont.load_default())
-            TN30I = AsoiafFonts.get('Tuff-Italic-28',ImageFont.load_default())
+            GBFontSize = 33
+            TNSize = 32
+            TN30Size = 28
+            TN30ISize = 28
+        elif len(tmp_ability_text) > 580:
+            GBFontSize = 30
+            TNSize = 30
+            TN30Size = 27
+            TN30ISize = 27
+        if lang in ['de','fr']:
+            # german words tend to me long:
+            title_mod = 0.85
+            mod = 0.9
+            GBFontSize = int(GBFontSize*title_mod)
+            TNSize = int(TNSize*title_mod)
+            TN30Size = int(TN30Size*mod)
+            TN30ISize = int(TN30ISize*mod)
+        GBFont = AsoiafFonts.get(f'Tuff-Bold-{GBFontSize}',ImageFont.load_default())
+        TN = AsoiafFonts.get(f'Tuff-Bold-{TNSize}',ImageFont.load_default())
+        TN30 = AsoiafFonts.get(f'Tuff-Normal-{TN30Size}',ImageFont.load_default())
+        TN30I = AsoiafFonts.get(f'Tuff-Italic-{TN30ISize}',ImageFont.load_default())
         for index in range(len(all_abilities)):
             ability = all_abilities[index]
             skillability_icon_images = []
+            translated_ability_dict = False
             try:
                 skilldata = [x for x in AsoiafData['newskills'] if x['Name'].strip().lower() == ability.lower()][0]
+                if AsoiafDataTranslations:
+                    translated_ability_dict = [x for x in AsoiafDataTranslations["newskills"] if x['Original Name'].strip().lower() == ability.lower()][0]
             except Exception as e:
                 print("Ran into an error at:\nskilldata = [x for x in AsoiafData['newskills'] if x['Name'].lower() == ability.lower()][0]")
-                print(str(e))
-                sys.exit(1)
                 #pdb.set_trace()
             if ability.startswith(f"Order:"):
                 skillability_icon_images.append( [Image.open(f"{units_folder}SkillOrder{ArmyAttackAndAbilitiesBorderColor}.webp").convert('RGBA'),[0,0]] )
@@ -775,7 +896,12 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
                             off = [10,-5]
                         skillability_icon_images.append( [SkillsAndAbiitiesIconsTable[skill].copy(),off] )
             starty = yAbilityOffset+0
-            unit_card, yAbilityOffset = draw_markdown_text(unit_card, GBFont, TN, TN30, TN30I, ability.upper().split('(')[0].strip(), skilldata['Description'].strip(), FactionColor, yAbilityOffset, 885, 1400, graphics_folder, padding=10)
+            ability_name = ability.upper().split('(')[0].strip()
+            skill_data_string = skilldata['Description'].strip()
+            if translated_ability_dict:
+                ability_name = translated_ability_dict['Translated Name'].upper().split('(')[0].strip()
+                skill_data_string = translated_ability_dict['Translated Description'].strip()
+            unit_card, yAbilityOffset = draw_markdown_text(unit_card, GBFont, TN, TN30, TN30I, ability_name, skill_data_string, FactionColor, yAbilityOffset, 885, 1400, graphics_folder, lang, padding=10)
             midy = starty + int((yAbilityOffset-starty) / 2 )
             if len(skillability_icon_images) > 0:
                 if len(skillability_icon_images) == 1:
@@ -818,30 +944,41 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
     # Paste the rotated text image onto your main image (consider using the alpha channel for proper transparency)
     unit_card.paste(rotated_text_image, (rotated_text_image.width - 10, unit_card.size[1] - rotated_text_image.height - 20), rotated_text_image)
     TuffBoldFont = AsoiafFonts.get('Tuff-Bold-50', ImageFont.load_default()) 
-    TuffBoldFontSmall = AsoiafFonts.get('Tuff-Bold-25', ImageFont.load_default()) 
-    #print(UnitData)
-    text_lines_list, hadAComma = split_name_string(UnitData['Name'].upper())
+    TuffBoldFontSmall = AsoiafFonts.get('Tuff-Bold-25', ImageFont.load_default())
+    if lang in ['de','fr']:
+        TuffBoldFont = AsoiafFonts.get('Tuff-Bold-42', ImageFont.load_default()) 
+    unit_name = UnitData['Name'].upper()
+    if AsoiafDataTranslations:
+        unit_name = translated_unit_data['Translated Name'].upper()
+    text_lines_list, hadAComma = split_name_string(unit_name)
     if not hadAComma:
         draw_centered_text(draw, (530, 750), text_lines_list, TuffBoldFont, "white", line_padding=10)
     else:
         draw_centered_text(draw, (530, 750), [text_lines_list[0]], TuffBoldFont, "white", line_padding=10)
         draw_centered_text(draw, (530, 750 + int(TuffBoldFont.size/1.3) ), [text_lines_list[1]], TuffBoldFontSmall, "white", line_padding=10)
-    unit_card = add_rounded_corners(unit_card, 20)
+    #unit_card = add_rounded_corners(unit_card, 20)
     return unit_card
 
 def main():
+    lang = "en"
+    if len(sys.argv) > 1:
+        lang = sys.argv[1]
     # Currently, this assumes you are running it from the assets/flutter_assets folder
     assets_folder="./assets/"
     fonts_dir=f"./fonts/"
+    warcouncil_latest_csv_folder = './warcouncil_latest_csv/'
     AsoiafFonts = load_fonts(fonts_dir)
     data_folder=f"{assets_folder}data/"
     units_folder=f"{assets_folder}Units/"
     attachments_folder=f"{assets_folder}Attachments/"
     graphics_folder = f"{assets_folder}graphics"
-    UnitCardsOutputDir  = "./unitscards/"
+    UnitCardsOutputDir  = f"./{lang}/unitscards/"
     if not os.path.exists(UnitCardsOutputDir):
-        os.mkdir(UnitCardsOutputDir)
+        Path(UnitCardsOutputDir).mkdir(parents=True, exist_ok=True)
     AsoiafData = import_csvs_to_dicts(data_folder) # contains the keys: attachments,boxes,ncus,newskills,rules,special,tactics,units
+    AsoiafDataTranslations = False
+    if lang != "en":
+        AsoiafDataTranslations = import_csvs_to_dicts(warcouncil_latest_csv_folder, lang)
     #SelectedUnitCardData = [x for x in AsoiafData['units'] if x['Name'] == "Gregor Clegane, The Mountain That Rides"][0]
     #SelectedUnitCardData = [x for x in AsoiafData['units'] if x['Name'] == "Lannister Crossbowmen"][0]
     #SelectedUnitCardData = [x for x in AsoiafData['units'] if x['Name'] == "Crannogman Trackers"][0]
@@ -850,10 +987,11 @@ def main():
         if not is_any_value_true:
             continue
         unit_card = BuildUnitCardFactionBackground(SelectedUnitCardData, units_folder, attachments_folder, graphics_folder)
-        unit_card = BuildUnitCardWithData(unit_card, SelectedUnitCardData, units_folder, graphics_folder, AsoiafFonts, AsoiafData)
-        # This is just for viewing / debugging purposes. Can click to get coordinates on image:
-        unit_card_output_path = os.path.join(UnitCardsOutputDir, f"{SelectedUnitCardData['Id'].replace(' ', '_')}.png")
-        unit_card.save(unit_card_output_path)
+        unit_card = BuildUnitCardWithData(unit_card, SelectedUnitCardData, units_folder, graphics_folder, AsoiafFonts, AsoiafData, lang, AsoiafDataTranslations)
+        if unit_card:
+            # This is just for viewing / debugging purposes. Can click to get coordinates on image:
+            unit_card_output_path = os.path.join(UnitCardsOutputDir, f"{SelectedUnitCardData['Id'].replace(' ', '_')}.png")
+            unit_card.save(unit_card_output_path)
     # If You Want to View the Card AND click debug to find positioning uncommont these lines:
     #root = tk.Tk()
     #app = ImageEditor(root, unit_card)

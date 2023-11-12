@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk, ImageStat
 from collections import defaultdict
 import sys
 import re
+from pathlib import Path
 
 #pip install pillow
 
@@ -68,8 +69,10 @@ def load_fonts(fonts_folder):
             print(f"Failed to load font {font_file}: {str(e)}")
     return fonts
 
-def import_csvs_to_dicts(assets_data_folder):
+def import_csvs_to_dicts(assets_data_folder, lang=False):
     csv_files = [f for f in os.listdir(assets_data_folder) if f.endswith('.csv')]
+    if lang:
+        csv_files = [f for f in os.listdir(assets_data_folder) if f.endswith('.csv') and f'.{lang}.' in f]
     all_data = {}
     for csv_file in csv_files:
         file_path = os.path.join(assets_data_folder, csv_file)
@@ -252,6 +255,7 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
     # Define line height using the regular font
     max_height = draw.textbbox((0, 0), 'Hy', font=regular_font)[3]  # 'Hy' for descenders and ascenders
 
+    text_body = text_body.replace('**.','.**').replace('*.','.*')
     # Split the text body by lines
     lines = [x.strip() for x in text_body.split('\n')]
 
@@ -484,20 +488,78 @@ def insert_space_before_brackets(text):
 def insert_padding_line_before_large_icon(text):
     return re.sub(r'\[(ATTACK|SKILL)(.+?)\]', r'\n[\1\2]\n', text)
 
+def wrap_markdown_individual_words(text_body):
+    def mark_indexes(text, marker):
+        # Find all indexes of standalone markers
+        if marker == '*':
+            indexes = [m.start() for m in re.finditer(r'(?<!\*)\*(?!\*)', text)]
+        elif marker == '**':
+            indexes = [m.start() for m in re.finditer(r'(?<!\*)\*\*(?!\*)', text)]
+        return indexes
+
+    def wrap_text(text, indexes, marker):
+        new_text = ''
+        last_index = 0
+        for start, end in zip(indexes[::2], indexes[1::2]):
+            # Add the text before the marker
+            new_text += text[last_index:start]
+            # Wrap the words in the marked section
+            marked_section = text[start + len(marker):end]
+            # Split by words and preserve newlines
+            wrapped_section = ''.join([f'{marker}{word}{marker}' if word.strip() else word
+                                    for word in re.split(r'(\s+)', marked_section)])
+            new_text += wrapped_section
+            last_index = end + len(marker)
+        # Add the remaining part of the text
+        new_text += text[last_index:]
+        return new_text
+    # Process for italic
+    italic_indexes = mark_indexes(text_body, '*')
+    text_body = wrap_text(text_body, italic_indexes, '*')
+
+    # Process for bold
+    bold_indexes = mark_indexes(text_body, '**')
+    text_body = wrap_text(text_body, bold_indexes, '**')
+    return text_body
+
+def insert_space_before_after_brackets(text):
+    # Insert a space before '[' if it is preceded by a non-space character
+    text = re.sub(r'(\S)\[', r'\1 [', text)
+    # Insert a space after ']' if it is followed by a non-space character
+    text = re.sub(r'\](\S)', r'] \1', text)
+    return text
+
 def draw_markdown_text_centerv3(image, bold_font, bold_font2, regular_font, regular_font_italic, title, text_body, color, y_top, x_left, x_right, graphics_folder, units_folder, faction, AsoiafFonts, padding=2):
     all_image_lines = []
-    text_body = insert_space_before_brackets(text_body)
-    text_body = insert_padding_line_before_large_icon(text_body)
+    title = title.strip()
     draw = ImageDraw.Draw(image)
+    title_length = draw.textlength(title, font=bold_font)
     # Define line height using the tallest font (usually the bold one) for consistency
     max_height = max(draw.textbbox((0, 0), 'Hy', font=font)[3] for font in [bold_font, bold_font2, regular_font, regular_font_italic])
-    line_image = CreateTextImage(draw, title.strip(), max_height, bold_font, color, padding)
-    all_image_lines.append( {'img':line_image,'y':y_top, 'x':x_left} )
+    # Calculate the y-coordinate for the text body
+    y_current = y_top + 0
+    if title_length + x_left > x_right:
+        title_line1, title_line2 = split_on_center_space(title)
+        line_image = CreateTextImage(draw, title_line1, max_height, bold_font, color, padding)
+        all_image_lines.append( {'img':line_image,'y':y_current, 'x':x_left} )
+        y_current += max_height + padding
+        line_image = CreateTextImage(draw, title_line2, max_height, bold_font, color, padding)
+        all_image_lines.append( {'img':line_image,'y':y_current, 'x':x_left} )
+    else:
+        line_image = CreateTextImage(draw, title, max_height, bold_font, color, padding)
+        all_image_lines.append( {'img':line_image,'y':y_top, 'x':x_left} )
+    y_current += max_height + padding
     #image.paste(line_image, (x_left, y_top), line_image)
     middle_x = (x_right + x_left) / 2
-    # Calculate the y-coordinate for the text body
-    y_current = y_top + max_height + padding
     # Split the text body by lines
+    text_body = text_body.replace('**.','.**').replace('*.','.*')
+    text_body = text_body.replace(' :',':')
+    text_body = text_body.replace('**:',':**').replace('*:',':*')
+    text_body = '\n'.join([x.strip() for x in text_body.split('\n') if x.strip() != ''])
+    text_body = insert_space_before_after_brackets(text_body)
+    text_body = insert_padding_line_before_large_icon(text_body)
+    text_body = wrap_markdown_individual_words(text_body)
+    text_body = text_body.replace('*[','[').replace('*[','[').replace(']*',']').replace(']*',']')
     lines = [x.strip() for x in text_body.split('\n')]
     for line in lines:
         words_and_icons = re.findall(r'\*\*.*?\*\*|\*.*?\*|\[.*?\]|\S+', line)
@@ -506,7 +568,7 @@ def draw_markdown_text_centerv3(image, bold_font, bold_font2, regular_font, regu
             # Strip markdown symbols for width calculation
             if '**' in word_or_icon:
                 font = bold_font2
-                word_or_icon = word_or_icon.strip('*')
+                word_or_icon = word_or_icon.replace('*','')
                 for subword in [x.strip() for x in word_or_icon.split(' ') if x.strip() != '']:
                     word_width = draw.textlength(subword, font=font)
                     if x_current + word_width > x_right:
@@ -527,7 +589,7 @@ def draw_markdown_text_centerv3(image, bold_font, bold_font2, regular_font, regu
                         x_current += word_width
             elif '*' in word_or_icon:
                 font = regular_font_italic
-                word_or_icon = word_or_icon.strip('*')
+                word_or_icon = word_or_icon.replace('*','')
                 for subword in [x.strip() for x in word_or_icon.split(' ') if x.strip() != '']:
                     word_width = draw.textlength(subword, font=font)
                     if x_current + word_width > x_right:
@@ -687,7 +749,7 @@ def generate_ncu_bar(hor_bar1, hor_large_bar):
     return second_new_image
 
 
-def BuildNcuCardFactionWithData(NcuData, units_folder, attachments_folder, graphics_folder, tactics_folder, AsoiafFonts, AsoiafData, ncus_folder):
+def BuildNcuCardFactionWithData(NcuData, units_folder, attachments_folder, graphics_folder, tactics_folder, AsoiafFonts, AsoiafData, ncus_folder, lang, AsoiafDataTranslations):
     print(f"Creating {NcuData['Name']}")
     # {'Faction': 'Neutral', 'Name': 'Lord Varys, The Spider', 'Character': 'Lord Varys', 'Cost': '4', 'Names': 'Little Birds', 'Descriptions': 
     # 'Varys begins the iendly unit.\n[SWORDS]: 1 enemy suffers 3 Hits.\n[LETTER]: Draw 1 Tactics card.\n[HORSE]: 1 friendly unit shifts 3".', 
@@ -703,6 +765,11 @@ def BuildNcuCardFactionWithData(NcuData, units_folder, attachments_folder, graph
         width, height = [int(x*0.63) for x in faction_crest.size]
         scaled_faction_crest = faction_crest.resize((width, height))
     ncu_faction_bg_image = Image.open(f"{tactics_folder}Bg_{faction_text_clean}.jpg").convert('RGBA')
+
+    translated_ncu_data = False
+    if AsoiafDataTranslations:
+        translated_ncu_data = [x for x in AsoiafDataTranslations["ncus"] if x['Id'].strip() == NcuData['Id'].strip()][0]
+
     FactionColor = "#7FDBFF" 
     if faction in FactionColors:
         FactionColor = FactionColors[faction]
@@ -816,16 +883,27 @@ def BuildNcuCardFactionWithData(NcuData, units_folder, attachments_folder, graph
     TN = AsoiafFonts.get('Tuff-Bold-40',ImageFont.load_default())
     TN30 = AsoiafFonts.get('Tuff-Normal-34',ImageFont.load_default())
     TN30I = AsoiafFonts.get('Tuff-Italic-34',ImageFont.load_default())
+    
     descriptions_names = [x.strip() for x in NcuData['Names'].strip().split('/') if not any([x.strip().startswith("Loyalty:"), x.strip().startswith("Rules:")]) ]
     descriptions = [x.strip() for x in NcuData['Descriptions'].strip().split('/')]
-    if len(descriptions_names) >= 2 and len(NcuData['Descriptions']) > 400:
+    if (len(descriptions_names) >= 2 and len(NcuData['Descriptions']) > 400) or len(NcuData['Descriptions']) > 480:
         # Some cards had a bunch of text on them
         GBFont = AsoiafFonts.get('Tuff-Bold-38',ImageFont.load_default())
         TN = AsoiafFonts.get('Tuff-Bold-38',ImageFont.load_default())
         TN30 = AsoiafFonts.get('Tuff-Normal-32',ImageFont.load_default())
         TN30I = AsoiafFonts.get('Tuff-Italic-32',ImageFont.load_default())
-    textBoundLeft = 95
-    textBoundRight = 652
+        if lang == 'fr':
+            GBFont = AsoiafFonts.get('Tuff-Bold-36',ImageFont.load_default())
+            TN = AsoiafFonts.get('Tuff-Bold-36',ImageFont.load_default())
+            TN30 = AsoiafFonts.get('Tuff-Normal-31',ImageFont.load_default())
+            TN30I = AsoiafFonts.get('Tuff-Italic-31',ImageFont.load_default())
+        if lang == 'de':
+            GBFont = AsoiafFonts.get('Tuff-Bold-34',ImageFont.load_default())
+            TN = AsoiafFonts.get('Tuff-Bold-34',ImageFont.load_default())
+            TN30 = AsoiafFonts.get('Tuff-Normal-31',ImageFont.load_default())
+            TN30I = AsoiafFonts.get('Tuff-Italic-31',ImageFont.load_default())
+    textBoundLeft = 98
+    textBoundRight = 650
     yAbilityOffset = 385
     dividerYPadding = 0
     dividerOffset = 20
@@ -836,18 +914,48 @@ def BuildNcuCardFactionWithData(NcuData, units_folder, attachments_folder, graph
     for i in range(len(descriptions_names)):
         nm = descriptions_names[i]
         ds = descriptions[i]
-        if i + 1 == len(descriptions_names) and len(descriptions_names) != len(descriptions):
+
+        translated_ability_dict = False
+        if AsoiafDataTranslations:
+            try:
+                translated_ability_dict = [x for x in AsoiafDataTranslations["newskills"] if x['Original Name'].strip().lower() == nm.strip().lower()][0]
+            except Exception as e:
+                print(f"ERROR FINDING SKILL: {str(e)}")
+
+        ability_name = nm.upper()
+        if translated_ability_dict:
+            ability_name = translated_ability_dict['Translated Name'].upper()
+            ds = [x.strip() for x in translated_ability_dict['Translated Description'].strip().split('/')][0]
+            if (len(ds) > 450 and lang in ["fr","de"]) or (len(ds) > 220 and lang in ["de"] and len(descriptions_names) >=2):
+                GBFont = AsoiafFonts.get('Tuff-Bold-34',ImageFont.load_default())
+                TN = AsoiafFonts.get('Tuff-Bold-34',ImageFont.load_default())
+                TN30 = AsoiafFonts.get('Tuff-Normal-31',ImageFont.load_default())
+                TN30I = AsoiafFonts.get('Tuff-Italic-31',ImageFont.load_default())
+        if not translated_ability_dict and i + 1 == len(descriptions_names) and len(descriptions_names) != len(descriptions):
             ds = "\n".join( descriptions[i:] )
-        ncu_card, yAbilityOffset = draw_markdown_text_centerv3(ncu_card, GBFont, TN, TN30, TN30I, nm.upper(), ds, FactionColor, yAbilityOffset-4, textBoundLeft, textBoundRight, graphics_folder, units_folder, faction, AsoiafFonts, padding=4)
+        #if translated_ncu_data:
+        #    ability_name = translated_ncu_data
+        if len(ability_name) > 32:
+            GBFont = AsoiafFonts.get('Tuff-Bold-34',ImageFont.load_default())
+            TN = AsoiafFonts.get('Tuff-Bold-34',ImageFont.load_default())
+        ncu_card, yAbilityOffset = draw_markdown_text_centerv3(ncu_card, GBFont, TN, TN30, TN30I, ability_name, ds, FactionColor, yAbilityOffset-4, textBoundLeft, textBoundRight, graphics_folder, units_folder, faction, AsoiafFonts, padding=4)
         if i < len(descriptions_names)-1:
             yAbilityOffset += addDivider(left_right_top_offset-decorOffset, yAbilityOffset)
     draw = ImageDraw.Draw(ncu_card)
     TuffBoldFont = AsoiafFonts.get('Tuff-Bold-47', ImageFont.load_default()) 
     TuffBoldFontSmall = AsoiafFonts.get('Tuff-Bold-25', ImageFont.load_default())
+    if lang in ['de','fr']:
+        TuffBoldFont = AsoiafFonts.get('Tuff-Bold-44', ImageFont.load_default()) 
+    ncu_name = NcuData['Name'].upper()
+    if AsoiafDataTranslations:
+        if 'Translated Name' in translated_ncu_data:
+            ncu_name = translated_ncu_data['Translated Name'].upper()
+        else:
+            ncu_name = translated_ncu_data['Name2'].upper()
     nameOffsetX = -26
     nameOffsetY = 20
-    if ',' in NcuData['Name'].upper():
-        lines = NcuData['Name'].upper().split(',')
+    if ',' in ncu_name:
+        lines = ncu_name.split(',')
         text_lines_list, hadAComma = split_name_string(lines[0], amnt=11)
         text_lines_list2, hadAComma = split_name_string(lines[1], amnt=27)
         if len(text_lines_list) == 1:
@@ -885,6 +993,9 @@ def BuildNcuCardFactionWithData(NcuData, units_folder, attachments_folder, graph
 
 
 def main():
+    lang = "en"
+    if len(sys.argv) > 1:
+        lang = sys.argv[1]
     # Currently, this assumes you are running it from the assets/flutter_assets folder
     assets_folder="./assets/"
     fonts_dir=f"./fonts/"
@@ -895,10 +1006,14 @@ def main():
     graphics_folder = f"{assets_folder}graphics"
     tactics_folder = f"{assets_folder}Tactics/"
     ncus_folder = f"{assets_folder}NCUs/"
-    NcuCardsOutputDir  = "./ncucards/"
+    NcuCardsOutputDir  = f"./{lang}/ncucards/"
+    warcouncil_latest_csv_folder = './warcouncil_latest_csv/'
     if not os.path.exists(NcuCardsOutputDir):
-        os.mkdir(NcuCardsOutputDir)
+        Path(NcuCardsOutputDir).mkdir(parents=True, exist_ok=True)
     AsoiafData = import_csvs_to_dicts(data_folder) # contains the keys: attachments,boxes,ncus,newskills,rules,special,tactics,units
+    AsoiafDataTranslations = False
+    if lang != "en":
+        AsoiafDataTranslations = import_csvs_to_dicts(warcouncil_latest_csv_folder, lang)
     #SelectedNcuCardData = [x for x in AsoiafData['ncus'] if x['Name'] == "Lord Varys, The Spider"][0]
     #SelectedNcuCardData = [x for x in AsoiafData['ncus'] if x['Name'] == "Othell Yarwyck, Warmachine Specialist"][0]
     #ncu_card = BuildNcuCardFactionWithData(SelectedNcuCardData, units_folder, attachments_folder, graphics_folder, tactics_folder, AsoiafFonts, AsoiafData, ncus_folder)
@@ -906,7 +1021,7 @@ def main():
         is_any_value_true = any(bool(value) for value in SelectedNcuCardData.values()) # check for empty dicts
         if not is_any_value_true:
             continue
-        ncu_card = BuildNcuCardFactionWithData(SelectedNcuCardData, units_folder, attachments_folder, graphics_folder, tactics_folder, AsoiafFonts, AsoiafData, ncus_folder)
+        ncu_card = BuildNcuCardFactionWithData(SelectedNcuCardData, units_folder, attachments_folder, graphics_folder, tactics_folder, AsoiafFonts, AsoiafData, ncus_folder, lang, AsoiafDataTranslations)
         ncu_card = add_rounded_corners(ncu_card, 20)
         ncu_card_output_path = os.path.join(NcuCardsOutputDir, f"{SelectedNcuCardData['Id'].replace(' ', '_')}.png")
         ncu_card.save(ncu_card_output_path)

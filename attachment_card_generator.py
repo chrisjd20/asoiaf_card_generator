@@ -6,6 +6,7 @@ import pdb
 from PIL import Image, ImageDraw, ImageFont, ImageTk, ImageStat
 import sys
 import re
+from pathlib import Path
 
 #pip install pillow
 
@@ -67,8 +68,10 @@ def load_fonts(fonts_folder):
             print(f"Failed to load font {font_file}: {str(e)}")
     return fonts
 
-def import_csvs_to_dicts(assets_data_folder):
+def import_csvs_to_dicts(assets_data_folder, lang=False):
     csv_files = [f for f in os.listdir(assets_data_folder) if f.endswith('.csv')]
+    if lang:
+        csv_files = [f for f in os.listdir(assets_data_folder) if f.endswith('.csv') and f'.{lang}.' in f]
     all_data = {}
     for csv_file in csv_files:
         file_path = os.path.join(assets_data_folder, csv_file)
@@ -242,6 +245,46 @@ def insert_space_before_brackets(text):
 def insert_padding_line_before_large_icon(text):
     return re.sub(r'\[(ATTACK|SKILL)(.+?)\]', r'\n[\1\2]\n', text)
 
+def wrap_markdown_individual_words(text_body):
+    def mark_indexes(text, marker):
+        # Find all indexes of standalone markers
+        if marker == '*':
+            indexes = [m.start() for m in re.finditer(r'(?<!\*)\*(?!\*)', text)]
+        elif marker == '**':
+            indexes = [m.start() for m in re.finditer(r'(?<!\*)\*\*(?!\*)', text)]
+        return indexes
+
+    def wrap_text(text, indexes, marker):
+        new_text = ''
+        last_index = 0
+        for start, end in zip(indexes[::2], indexes[1::2]):
+            # Add the text before the marker
+            new_text += text[last_index:start]
+            # Wrap the words in the marked section
+            marked_section = text[start + len(marker):end]
+            # Split by words and preserve newlines
+            wrapped_section = ''.join([f'{marker}{word}{marker}' if word.strip() else word
+                                    for word in re.split(r'(\s+)', marked_section)])
+            new_text += wrapped_section
+            last_index = end + len(marker)
+        # Add the remaining part of the text
+        new_text += text[last_index:]
+        return new_text
+    # Process for italic
+    italic_indexes = mark_indexes(text_body, '*')
+    text_body = wrap_text(text_body, italic_indexes, '*')
+
+    # Process for bold
+    bold_indexes = mark_indexes(text_body, '**')
+    text_body = wrap_text(text_body, bold_indexes, '**')
+    return text_body
+
+def insert_space_before_after_brackets(text):
+    # Insert a space before '[' if it is preceded by a non-space character
+    text = re.sub(r'(\S)\[', r'\1 [', text)
+    # Insert a space after ']' if it is followed by a non-space character
+    text = re.sub(r'\](\S)', r'] \1', text)
+    return text
 
 def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_italic, title, text_body, color, y_top, x_left, x_right, graphics_folder, units_folder, faction, AsoiafFonts, padding=2):
     # Initialize the drawing context
@@ -260,6 +303,14 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
     max_height = draw.textbbox((0, 0), 'Hy', font=regular_font)[3]  # 'Hy' for descenders and ascenders
 
     # Split the text body by lines
+    text_body = text_body.replace('**.','.**').replace('*.','.*')
+    text_body = text_body.replace(' :',':')
+    text_body = text_body.replace('**:',':**').replace('*:',':*')
+    text_body = '\n'.join([x.strip() for x in text_body.split('\n') if x.strip() != ''])
+    text_body = insert_space_before_after_brackets(text_body)
+    text_body = insert_padding_line_before_large_icon(text_body)
+    text_body = wrap_markdown_individual_words(text_body)
+    text_body = text_body.replace('*[','[').replace('*[','[').replace(']*',']').replace(']*',']')
     lines = [x.strip() for x in text_body.split('\n')]
 
     # Function to handle the drawing of text parts with the appropriate style
@@ -288,7 +339,7 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
                 font = regular_font  # Reset to regular font for non-bold parts
 
             # Split the part into italic parts and draw each one
-            italic_parts = bold_part.split('*')
+            italic_parts = [x for x in bold_part.split('*') if x != '']
             for i, italic_part in enumerate(italic_parts):
                 if i % 2 == 1:
                     # This part is italic
@@ -307,6 +358,9 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
                         # Load and draw the icon
                         soff = 15
                         icon, new_width = create_icon_image(graphics_folder, units_folder, icon_key, max_height+soff, faction, AsoiafFonts)
+                        if icon.size[0] + x_current > x_right:
+                            y_current += max_height + padding
+                            x_current = x_left
                         image.paste(icon, (x_current-3, y_current-soff+2), mask=icon)
                         x_current += icon.size[0]
                         #icon = Image.open(f"{graphics_folder}/{icon_key}.png").convert('RGBA')
@@ -481,7 +535,7 @@ def add_background_to_image(original_image, faction):
     new_image.paste(original_image, (0, 0), original_image)
     return new_image
 
-def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder, graphics_folder, tactics_folder, AsoiafFonts, AsoiafData):
+def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder, graphics_folder, tactics_folder, AsoiafFonts, AsoiafData, lang, AsoiafDataTranslations):
     print(f"Creating {AttachData['Name']}")
     faction = AttachData['Faction']
     AttachId = AttachData['Id']
@@ -489,6 +543,10 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
     UnitTypeClean = AttachData['Type'].replace(' ','')
     isCommander = AttachData['Cost'] == 'C'
     faction_text_clean = re.sub(r'[^A-Za-z]', '', faction)
+
+    translated_attach_data = False
+    if AsoiafDataTranslations:
+        translated_attach_data = [x for x in AsoiafDataTranslations["attachments"] if x['Id'].strip() == AttachData['Id'].strip()][0]
     # {'Faction': 'Lannister', 'Name': 'Jaime Lannister, The Kingslayer', 'Character': 'Jaime Lannister', 'Cost': 'C', 
     # 'Type': 'Infantry', 'Abilities': 'Precision /\nCounterstrike /\nDisrupt', 'Requirements': '', 'Boxes': 'SIF001/SIF001B',
     # 'Id': '20115', 'Version': '2021-S03', 'Requirement Text': '', 'Quote': '"They called him the Lion of Lannister to his face and whispered "Kingslayer" behind his back."'}
@@ -758,26 +816,57 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
             except IndexError as e:
                 all_abilities.remove(ability_text)
                 continue
+        tmp_ability_text = ""
+        for ability in all_abilities:
+            tmpt = [x['Description'] for x in AsoiafData['newskills'] if x['Name'].strip().lower() == ability.lower()][0]
+            if AsoiafDataTranslations:
+                try:
+                    tmpt = [x['Translated Description'] for x in AsoiafDataTranslations["newskills"] if x['Original Name'].strip().lower() == ability.lower()][0]
+                except Exception as e:
+                    pass
+            tmp_ability_text += tmpt
         GBFont = AsoiafFonts.get('Tuff-Bold-38',ImageFont.load_default())
         TN = AsoiafFonts.get('Tuff-Bold-38',ImageFont.load_default())
         TN30 = AsoiafFonts.get('Tuff-Normal-32',ImageFont.load_default())
         TN30I = AsoiafFonts.get('Tuff-Italic-32',ImageFont.load_default())
-        if len(all_abilities) > 3:
+        if len(all_abilities) > 3: # only one card with this that caused problems but this fixed it
             GBFont = AsoiafFonts.get('Tuff-Bold-33',ImageFont.load_default())
             TN = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
             TN30 = AsoiafFonts.get('Tuff-Normal-28',ImageFont.load_default())
             TN30I = AsoiafFonts.get('Tuff-Italic-28',ImageFont.load_default())
-        if len(all_abilities) > 3: # only one card with this that caused problems but this fixed it
             SkillDivider = SkillDivider.resize(( SkillDivider.size[0], int(SkillDivider.size[1]/2) ))
+            if lang in ['fr']:
+                GBFont = AsoiafFonts.get('Tuff-Bold-28',ImageFont.load_default())
+                TN = AsoiafFonts.get('Tuff-Bold-28',ImageFont.load_default())
+                TN30 = AsoiafFonts.get('Tuff-Normal-26',ImageFont.load_default())
+                TN30I = AsoiafFonts.get('Tuff-Italic-26',ImageFont.load_default())
+            elif lang in ['de']: #friggin mance rayder
+                GBFont = AsoiafFonts.get('Tuff-Bold-26',ImageFont.load_default())
+                TN = AsoiafFonts.get('Tuff-Bold-26',ImageFont.load_default())
+                TN30 = AsoiafFonts.get('Tuff-Normal-26',ImageFont.load_default())
+                TN30I = AsoiafFonts.get('Tuff-Italic-26',ImageFont.load_default())
+        elif len(all_abilities) <= 2 and len(tmp_ability_text) > 480:
+            GBFont = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
+            TN = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
+            TN30 = AsoiafFonts.get('Tuff-Normal-26',ImageFont.load_default())
+            TN30I = AsoiafFonts.get('Tuff-Italic-26',ImageFont.load_default())
+        elif len(all_abilities) > 2 and lang in ['de','fr']:
+            GBFont = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
+            TN = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
+            TN30 = AsoiafFonts.get('Tuff-Normal-27',ImageFont.load_default())
+            TN30I = AsoiafFonts.get('Tuff-Italic-27',ImageFont.load_default())
         for index in range(len(all_abilities)):
             ability = all_abilities[index]
             skillability_icon_images = []
+            translated_ability_dict = False
             try:
                 skilldata = [x for x in AsoiafData['newskills'] if x['Name'].strip().lower() == ability.lower()][0]
+                if AsoiafDataTranslations:
+                    translated_ability_dict = [x for x in AsoiafDataTranslations["newskills"] if x['Original Name'].strip().lower() == ability.lower()][0]
             except Exception as e:
                 print("Ran into an error at:\nskilldata = [x for x in AsoiafData['newskills'] if x['Name'].lower() == ability.lower()][0]")
                 print(str(e))
-                sys.exit(1)
+                #sys.exit(1)
                 #pdb.set_trace()
             skillScalePercent = 0.9
             if ability.startswith(f"Order:"):
@@ -806,7 +895,15 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
                         sk = sk.resize((width, height))
                         skillability_icon_images.append( [sk,off] )
             starty = yAbilityOffset+0
-            attach_card, yAbilityOffset = draw_markdown_text(attach_card, GBFont, TN, TN30, TN30I, ability.upper().split('(')[0].strip(), skilldata['Description'].strip(), FactionColor, yAbilityOffset-4, textBoundLeft, textBoundRight, graphics_folder, units_folder, faction, AsoiafFonts, padding=10)
+            ability_name = ability.upper().split('(')[0].strip()
+            skill_data_string = skilldata['Description'].strip()
+            if translated_ability_dict:
+                ability_name = translated_ability_dict['Translated Name'].upper().split('(')[0].strip()
+                skill_data_string = translated_ability_dict['Translated Description'].strip()
+            if len(ability_name) > 28:
+                GBFont = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
+                TN = AsoiafFonts.get('Tuff-Bold-32',ImageFont.load_default())
+            attach_card, yAbilityOffset = draw_markdown_text(attach_card, GBFont, TN, TN30, TN30I, ability_name, skill_data_string, FactionColor, yAbilityOffset-4, textBoundLeft, textBoundRight, graphics_folder, units_folder, faction, AsoiafFonts, padding=10)
             yAbilityOffset -= 4
             midy = starty + int((yAbilityOffset-starty) / 2 )
             if len(skillability_icon_images) > 0:
@@ -844,11 +941,16 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
 
     TuffBoldFont = AsoiafFonts.get('Tuff-Bold-47', ImageFont.load_default()) 
     TuffBoldFontSmall = AsoiafFonts.get('Tuff-Bold-30', ImageFont.load_default())
+    if lang in ['de','fr']:
+        TuffBoldFont = AsoiafFonts.get('Tuff-Bold-44', ImageFont.load_default()) 
+    attach_name = AttachData['Name'].upper()
+    if AsoiafDataTranslations:
+        attach_name = translated_attach_data['Translated Name'].upper()
     isCommanderOffsetX = 0 if isCommander else -24
     isCommanderOffsetY = 0 if isCommander else 32
     # THIS IS REALLY BAD BUT IT WORKS AND IM BEING LAZY:
-    if ',' in AttachData['Name'].upper():
-        lines = AttachData['Name'].upper().split(',')
+    if ',' in attach_name:
+        lines = attach_name.split(',')
         text_lines_list, hadAComma = split_name_string(lines[0], amnt=11)
         text_lines_list2, hadAComma = split_name_string(lines[1], amnt=18)
         if len(text_lines_list) == 1:
@@ -888,29 +990,35 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
 
 
 def main():
+    lang = "en"
+    if len(sys.argv) > 1:
+        lang = sys.argv[1]
     # Currently, this assumes you are running it from the assets/flutter_assets folder
     assets_folder="./assets/"
     fonts_dir=f"./fonts/"
+    warcouncil_latest_csv_folder = './warcouncil_latest_csv/'
     AsoiafFonts = load_fonts(fonts_dir)
     data_folder=f"{assets_folder}data/"
     units_folder=f"{assets_folder}Units/"
     attachments_folder=f"{assets_folder}Attachments/"
     graphics_folder = f"{assets_folder}graphics"
     tactics_folder = f"{assets_folder}Tactics/"
-    AttachCardsOutputDir  = "./attachmentcards/"
+    AttachCardsOutputDir  = f"./{lang}/attachmentcards/"
     if not os.path.exists(AttachCardsOutputDir):
-        os.mkdir(AttachCardsOutputDir)
+        Path(AttachCardsOutputDir).mkdir(parents=True, exist_ok=True)
     AsoiafData = import_csvs_to_dicts(data_folder) # contains the keys: attachments,boxes,ncus,newskills,rules,special,tactics,units
+    AsoiafDataTranslations = False
+    if lang != "en":
+        AsoiafDataTranslations = import_csvs_to_dicts(warcouncil_latest_csv_folder, lang)
     #SelectedAttachmentCardData = [x for x in AsoiafData['attachments'] if x['Name'] == "Jaime Lannister, The Kingslayer"][0]
     #SelectedAttachmentCardData = [x for x in AsoiafData['attachments'] if x['Name'] == "Preston Greenfield, Kingsguard"][0]
     #SelectedAttachmentCardData = [x for x in AsoiafData['attachments'] if x['Name'] == "Champion of the Faith"][0]
     #SelectedAttachmentCardData = [x for x in AsoiafData['attachments'] if x['Name'] == "Barristan Selmy, Lord Commander of The Kingsguard"][0]
-    #attach_card = BuildAttachCardFactionWithData(SelectedAttachmentCardData, units_folder, attachments_folder, graphics_folder, tactics_folder, AsoiafFonts, AsoiafData)
     for SelectedAttachmentCardData in AsoiafData['attachments']:
         is_any_value_true = any(bool(value) for value in SelectedAttachmentCardData.values()) # check for empty dicts
         if not is_any_value_true:
             continue
-        attach_card = BuildAttachCardFactionWithData(SelectedAttachmentCardData, units_folder, attachments_folder, graphics_folder, tactics_folder, AsoiafFonts, AsoiafData)
+        attach_card = BuildAttachCardFactionWithData(SelectedAttachmentCardData, units_folder, attachments_folder, graphics_folder, tactics_folder, AsoiafFonts, AsoiafData, lang, AsoiafDataTranslations)
         attach_card = add_rounded_corners(attach_card, 20)
         attach_card_output_path = os.path.join(AttachCardsOutputDir, f"{SelectedAttachmentCardData['Id'].replace(' ', '_')}.png")
         attach_card.save(attach_card_output_path)
