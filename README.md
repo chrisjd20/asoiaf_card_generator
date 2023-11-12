@@ -24,6 +24,8 @@ python3 ncu_card_generator.py de && python3 unit_card_generator.py de && python3
 
 I only tested this on `de`, `fr`, and `en`. 
 
+I dont think im going to work on `scn` or `tcn` translations for a while cause they are asian characters which cant use the default provided ASOIAF fonts.
+
 Credit for tactics cards creation goes to Pf2eTools over at:
 
 https://github.com/Pf2eTools/asoiaf_card_generator/tree/main
