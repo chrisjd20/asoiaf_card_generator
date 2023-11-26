@@ -286,6 +286,14 @@ def insert_space_before_after_brackets(text):
     text = re.sub(r'\](\S)', r'] \1', text)
     return text
 
+def clean_up_colon(text):
+    text = text.strip().replace('\u202f', '')
+    while " :" in text:
+        text = text.replace(' :',':')
+    while "  " in text:
+        text = text.replace('  ',' ')
+    return text
+
 def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_italic, title, text_body, color, y_top, x_left, x_right, graphics_folder, units_folder, faction, AsoiafFonts, padding=2):
     # Initialize the drawing context
     draw = ImageDraw.Draw(image)
@@ -303,6 +311,7 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
     max_height = draw.textbbox((0, 0), 'Hy', font=regular_font)[3]  # 'Hy' for descenders and ascenders
 
     # Split the text body by lines
+    text_body = clean_up_colon(text_body)
     text_body = text_body.replace('**.','.**').replace('*.','.*')
     text_body = text_body.replace(' :',':')
     text_body = text_body.replace('**:',':**').replace('*:',':*')
@@ -310,7 +319,8 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
     text_body = insert_space_before_after_brackets(text_body)
     text_body = insert_padding_line_before_large_icon(text_body)
     text_body = wrap_markdown_individual_words(text_body)
-    text_body = text_body.replace('*[','[').replace('*[','[').replace(']*',']').replace(']*',']')
+    text_body = text_body.replace('*[','[').replace('*[','[').replace(']*',']').replace(']*',']').replace('  ',' ')
+    text_body = clean_up_colon(text_body)
     lines = [x.strip() for x in text_body.split('\n')]
 
     # Function to handle the drawing of text parts with the appropriate style

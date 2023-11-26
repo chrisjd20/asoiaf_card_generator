@@ -561,15 +561,25 @@ def insert_space_before_after_brackets(text):
 def insert_padding_line_before_large_icon(text):
     return re.sub(r'\[(ATTACK|SKILL)(.+?)\]', r'\n[\1\2]\n', text)
 
+def clean_up_colon(text):
+    text = text.strip().replace('\u202f', '').replace('**:',':**').replace('*:',':*')
+    while " : " in text:
+        text = text.replace(' : ',':')
+    while " :" in text:
+        text = text.replace(' :',':')
+    while "  " in text:
+        text = text.replace('  ',' ')
+    return text.replace('**:',':**').replace('*:',':*')
+
 def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_italic, title, text_body, color, y_top, x_left, x_right, graphics_folder, lang, padding=2):
     # Initialize the drawing context
     draw = ImageDraw.Draw(image)
-    
+    title = clean_up_colon(title)
     # Draw the title using the bold font
-    draw.text((x_left, y_top), title.strip(), font=bold_font, fill=color)
+    draw.text((x_left, y_top), title, font=bold_font, fill=color)
     
     # Get title height and update y-coordinate for text body
-    title_bbox = draw.textbbox((x_left, y_top), title.strip(), font=bold_font)
+    title_bbox = draw.textbbox((x_left, y_top), title, font=bold_font)
     title_height = title_bbox[3] - title_bbox[1]
     y_current = y_top + title_height + int(padding * 2)
     
@@ -577,13 +587,14 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
     max_height = draw.textbbox((0, 0), 'Hy', font=regular_font)[3]  # 'Hy' for descenders and ascenders
     # Split the text body by lines
     text_body = text_body.replace('**.','.**').replace('*.','.*')
-    text_body = text_body.replace(' :',':')
+    text_body = clean_up_colon(text_body)
     text_body = text_body.replace('**:',':**').replace('*:',':*')
     text_body = '\n'.join([x.strip() for x in text_body.split('\n') if x.strip() != ''])
     text_body = insert_space_before_after_brackets(text_body)
     text_body = insert_padding_line_before_large_icon(text_body)
     text_body = wrap_markdown_individual_words(text_body)
     text_body = text_body.replace('*[','[').replace('*[','[').replace(']*',']').replace(']*',']')
+    text_body = clean_up_colon(text_body)
     lines = [x.strip() for x in text_body.split('\n')]
 
     # Function to handle the drawing of text parts with the appropriate style
@@ -989,6 +1000,7 @@ def main():
         unit_card = BuildUnitCardFactionBackground(SelectedUnitCardData, units_folder, attachments_folder, graphics_folder)
         unit_card = BuildUnitCardWithData(unit_card, SelectedUnitCardData, units_folder, graphics_folder, AsoiafFonts, AsoiafData, lang, AsoiafDataTranslations)
         if unit_card:
+            unit_card = add_rounded_corners(unit_card,15)
             # This is just for viewing / debugging purposes. Can click to get coordinates on image:
             unit_card_output_path = os.path.join(UnitCardsOutputDir, f"{SelectedUnitCardData['Id'].replace(' ', '_')}.png")
             unit_card.save(unit_card_output_path)

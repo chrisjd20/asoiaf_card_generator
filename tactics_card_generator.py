@@ -740,14 +740,14 @@ def draw_markdown_text_centerv3(image, bold_font, bold_font2, regular_font, regu
     #image.paste(line_image, (x_left, y_top), line_image)
     middle_x = (x_right + x_left) / 2
     # Split the text body by lines
-    text_body = text_body.replace('**.','.**').replace('*.','.*')
+    text_body = text_body.replace('\u202f', '').replace('**.','.**').replace('*.','.*')
     text_body = text_body.replace(' :',':')
     text_body = text_body.replace('**:',':**').replace('*:',':*')
     text_body = '\n'.join([x.strip() for x in text_body.split('\n') if x.strip() != ''])
     text_body = insert_space_before_after_brackets(text_body)
     text_body = insert_padding_line_before_large_icon(text_body)
     text_body = wrap_markdown_individual_words(text_body)
-    text_body = text_body.replace('*[','[').replace('*[','[').replace(']*',']').replace(']*',']')
+    text_body = text_body.replace('*[','[').replace('*[','[').replace(']*',']').replace(']*',']').replace('  ',' ')
     lines = [x.strip() for x in text_body.split('\n')]
     for line in lines:
         words_and_icons = re.findall(r'\*\*.*?\*\*|\*.*?\*|\[.*?\]|\S+', line)

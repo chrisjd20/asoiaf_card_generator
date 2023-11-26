@@ -245,7 +245,7 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
     draw = ImageDraw.Draw(image)
     
     # Draw the title using the bold font
-    draw.text((x_left, y_top), title.strip(), font=bold_font, fill=color)
+    draw.text((x_left, y_top), title.strip().replace('\u202f', ''), font=bold_font, fill=color)
     
     # Get title height and update y-coordinate for text body
     title_bbox = draw.textbbox((x_left, y_top), title.strip(), font=bold_font)
@@ -255,7 +255,7 @@ def draw_markdown_text(image, bold_font, bold_font2, regular_font, regular_font_
     # Define line height using the regular font
     max_height = draw.textbbox((0, 0), 'Hy', font=regular_font)[3]  # 'Hy' for descenders and ascenders
 
-    text_body = text_body.replace('**.','.**').replace('*.','.*')
+    text_body = text_body.replace('\u202f', '').replace('**.','.**').replace('*.','.*')
     # Split the text body by lines
     lines = [x.strip() for x in text_body.split('\n')]
 
@@ -559,7 +559,7 @@ def draw_markdown_text_centerv3(image, bold_font, bold_font2, regular_font, regu
     text_body = insert_space_before_after_brackets(text_body)
     text_body = insert_padding_line_before_large_icon(text_body)
     text_body = wrap_markdown_individual_words(text_body)
-    text_body = text_body.replace('*[','[').replace('*[','[').replace(']*',']').replace(']*',']')
+    text_body = text_body.replace('*[','[').replace('*[','[').replace(']*',']').replace(']*',']').replace('  ',' ')
     lines = [x.strip() for x in text_body.split('\n')]
     for line in lines:
         words_and_icons = re.findall(r'\*\*.*?\*\*|\*.*?\*|\[.*?\]|\S+', line)
