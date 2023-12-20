@@ -556,7 +556,10 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
 
     translated_attach_data = False
     if AsoiafDataTranslations:
-        translated_attach_data = [x for x in AsoiafDataTranslations["attachments"] if x['Id'].strip() == AttachData['Id'].strip()][0]
+        try:
+            translated_attach_data = [x for x in AsoiafDataTranslations["attachments"] if x['Id'].strip() == AttachData['Id'].strip()][0]
+        except:
+            print("No translation found for this attachment, defaulting to English")
     # {'Faction': 'Lannister', 'Name': 'Jaime Lannister, The Kingslayer', 'Character': 'Jaime Lannister', 'Cost': 'C', 
     # 'Type': 'Infantry', 'Abilities': 'Precision /\nCounterstrike /\nDisrupt', 'Requirements': '', 'Boxes': 'SIF001/SIF001B',
     # 'Id': '20115', 'Version': '2021-S03', 'Requirement Text': '', 'Quote': '"They called him the Lion of Lannister to his face and whispered "Kingslayer" behind his back."'}
@@ -829,7 +832,7 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
         tmp_ability_text = ""
         for ability in all_abilities:
             tmpt = [x['Description'] for x in AsoiafData['newskills'] if x['Name'].strip().lower() == ability.lower()][0]
-            if AsoiafDataTranslations:
+            if translated_attach_data:
                 try:
                     tmpt = [x['Translated Description'] for x in AsoiafDataTranslations["newskills"] if x['Original Name'].strip().lower() == ability.lower()][0]
                 except Exception as e:
@@ -871,7 +874,7 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
             translated_ability_dict = False
             try:
                 skilldata = [x for x in AsoiafData['newskills'] if x['Name'].strip().lower() == ability.lower()][0]
-                if AsoiafDataTranslations:
+                if translated_attach_data:
                     translated_ability_dict = [x for x in AsoiafDataTranslations["newskills"] if x['Original Name'].strip().lower() == ability.lower()][0]
             except Exception as e:
                 print("Ran into an error at:\nskilldata = [x for x in AsoiafData['newskills'] if x['Name'].lower() == ability.lower()][0]")
@@ -954,7 +957,7 @@ def BuildAttachCardFactionWithData(AttachData, units_folder, attachments_folder,
     if lang in ['de','fr']:
         TuffBoldFont = AsoiafFonts.get('Tuff-Bold-44', ImageFont.load_default()) 
     attach_name = AttachData['Name'].upper()
-    if AsoiafDataTranslations:
+    if translated_attach_data:
         attach_name = translated_attach_data['Translated Name'].upper()
     isCommanderOffsetX = 0 if isCommander else -24
     isCommanderOffsetY = 0 if isCommander else 32

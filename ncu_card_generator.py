@@ -768,7 +768,10 @@ def BuildNcuCardFactionWithData(NcuData, units_folder, attachments_folder, graph
 
     translated_ncu_data = False
     if AsoiafDataTranslations:
-        translated_ncu_data = [x for x in AsoiafDataTranslations["ncus"] if x['Id'].strip() == NcuData['Id'].strip()][0]
+        try:
+            translated_ncu_data = [x for x in AsoiafDataTranslations["ncus"] if x['Id'].strip() == NcuData['Id'].strip()][0]
+        except:
+            print("No translation found for NCU, defaulting to English")
 
     FactionColor = "#7FDBFF" 
     if faction in FactionColors:
@@ -916,7 +919,7 @@ def BuildNcuCardFactionWithData(NcuData, units_folder, attachments_folder, graph
         ds = descriptions[i]
 
         translated_ability_dict = False
-        if AsoiafDataTranslations:
+        if translated_ncu_data:
             try:
                 translated_ability_dict = [x for x in AsoiafDataTranslations["newskills"] if x['Original Name'].strip().lower() == nm.strip().lower()][0]
             except Exception as e:
@@ -947,7 +950,7 @@ def BuildNcuCardFactionWithData(NcuData, units_folder, attachments_folder, graph
     if lang in ['de','fr']:
         TuffBoldFont = AsoiafFonts.get('Tuff-Bold-44', ImageFont.load_default()) 
     ncu_name = NcuData['Name'].upper()
-    if AsoiafDataTranslations:
+    if translated_ncu_data:
         if 'Translated Name' in translated_ncu_data:
             ncu_name = translated_ncu_data['Translated Name'].upper()
         else:

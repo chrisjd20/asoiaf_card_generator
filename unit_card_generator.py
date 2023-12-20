@@ -664,7 +664,10 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
     FactionColor = "#7FDBFF" # AQUA default in case new army or somethign
     translated_unit_data = False
     if AsoiafDataTranslations:
-        translated_unit_data = [x for x in AsoiafDataTranslations["units"] if x['Id'].strip() == UnitData['Id'].strip()][0]
+        try:
+            translated_unit_data = [x for x in AsoiafDataTranslations["units"] if x['Id'].strip() == UnitData['Id'].strip()][0]
+        except:
+            print("No translation found, making it in english")
     if faction in FactionColors:
         FactionColor = FactionColors[faction]
     ArmyAttackAndAbilitiesBorderColor = "Gold"
@@ -847,7 +850,7 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
         tmp_ability_text = ""
         for ability in all_abilities:
             tmpt = [x['Description'] for x in AsoiafData['newskills'] if x['Name'].strip().lower() == ability.lower()][0]
-            if AsoiafDataTranslations:
+            if translated_unit_data:
                 try:
                     tmpt = [x['Translated Description'] for x in AsoiafDataTranslations["newskills"] if x['Original Name'].strip().lower() == ability.lower()][0]
                 except Exception as e:
@@ -885,7 +888,7 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
             translated_ability_dict = False
             try:
                 skilldata = [x for x in AsoiafData['newskills'] if x['Name'].strip().lower() == ability.lower()][0]
-                if AsoiafDataTranslations:
+                if translated_unit_data:
                     translated_ability_dict = [x for x in AsoiafDataTranslations["newskills"] if x['Original Name'].strip().lower() == ability.lower()][0]
             except Exception as e:
                 print("Ran into an error at:\nskilldata = [x for x in AsoiafData['newskills'] if x['Name'].lower() == ability.lower()][0]")
@@ -959,7 +962,7 @@ def BuildUnitCardWithData(unit_card, UnitData, units_folder, graphics_folder, As
     if lang in ['de','fr']:
         TuffBoldFont = AsoiafFonts.get('Tuff-Bold-42', ImageFont.load_default()) 
     unit_name = UnitData['Name'].upper()
-    if AsoiafDataTranslations:
+    if translated_unit_data:
         unit_name = translated_unit_data['Translated Name'].upper()
     text_lines_list, hadAComma = split_name_string(unit_name)
     if not hadAComma:

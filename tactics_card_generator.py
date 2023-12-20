@@ -927,10 +927,13 @@ def AddTacticsCardTextWithTranslations(card_image, TacticsCardData, units_folder
 
     translated_tactics_data = False
     if AsoiafDataTranslations:
-        translated_tactics_data = [x for x in AsoiafDataTranslations['tactics'] if x['Id'].strip() == TacticsCardData['Id'].strip()][0]
-        name = translated_tactics_data['Name'].replace('\n',' ')
-        Deck = translated_tactics_data.get("Deck", False)
-        CardText = translated_tactics_data['Text']
+        try:
+            translated_tactics_data = [x for x in AsoiafDataTranslations['tactics'] if x['Id'].strip() == TacticsCardData['Id'].strip()][0]
+            name = translated_tactics_data['Name'].replace('\n',' ')
+            Deck = translated_tactics_data.get("Deck", False)
+            CardText = translated_tactics_data['Text']
+        except:
+            print("Translation not found for tactics card, using english text")
     commander_name = Deck
     tmp_line = [[y.strip() for y in x.split('/\n')] for x in CardText.split(' /')]
     lines_of_CardText = []
